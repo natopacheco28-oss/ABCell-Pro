@@ -1,5 +1,6 @@
 import os
 import webbrowser
+from datetime import datetime
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
@@ -138,23 +139,56 @@ except Exception:
             return []
 
 
-def _make_card(titulo: str, valor: str = "", subtitulo: str = "") -> tuple[QFrame, QLabel, QLabel]:
+def _make_summary_card(titulo: str, subtitulo: str, enlace: str, badge_bg: str, badge_fg: str):
+    card = QFrame()
+    card.setObjectName("Card")
+    lay = QHBoxLayout(card)
+    lay.setContentsMargins(16, 14, 16, 14)
+    lay.setSpacing(12)
+
+    badge = QLabel("●")
+    badge.setFixedSize(36, 36)
+    badge.setAlignment(Qt.AlignCenter)
+    badge.setStyleSheet(
+        f"background-color: {badge_bg}; color: {badge_fg}; border-radius: 18px; font-size: 15px; font-weight: 700;"
+    )
+    lay.addWidget(badge)
+
+    txt = QVBoxLayout()
+    txt.setSpacing(2)
+    lbl_t = QLabel(titulo)
+    lbl_t.setObjectName("CardTitle")
+    row_sub = QHBoxLayout()
+    row_sub.setSpacing(6)
+    lbl_s = QLabel(subtitulo)
+    lbl_s.setObjectName("CardSub")
+    lbl_l = QLabel(enlace)
+    lbl_l.setObjectName("CardLink")
+    row_sub.addWidget(lbl_s)
+    row_sub.addWidget(lbl_l)
+    row_sub.addStretch()
+
+    txt.addWidget(lbl_t)
+    txt.addLayout(row_sub)
+    lay.addLayout(txt, 1)
+    return card, lbl_s, lbl_l
+
+
+def _make_metric_card(titulo: str, valor: str, subtitulo: str):
     card = QFrame()
     card.setObjectName("Card")
     lay = QVBoxLayout(card)
-    lay.setContentsMargins(14, 12, 14, 12)
-    lay.setSpacing(4)
+    lay.setContentsMargins(16, 12, 16, 12)
+    lay.setSpacing(3)
     lbl_t = QLabel(titulo)
-    lbl_t.setObjectName("Subtitle")
+    lbl_t.setObjectName("CardSub")
     lbl_v = QLabel(valor)
     lbl_v.setObjectName("MetricValue")
     lbl_s = QLabel(subtitulo)
-    lbl_s.setObjectName("Subtitle")
+    lbl_s.setObjectName("CardSub")
     lay.addWidget(lbl_t)
-    if valor:
-        lay.addWidget(lbl_v)
-    if subtitulo:
-        lay.addWidget(lbl_s)
+    lay.addWidget(lbl_v)
+    lay.addWidget(lbl_s)
     return card, lbl_v, lbl_s
 
 
@@ -163,6 +197,8 @@ def _configurar_tabla(tabla: QTableWidget, stretch_col: int = -1):
     tabla.setSelectionBehavior(QTableWidget.SelectRows)
     tabla.setEditTriggers(QTableWidget.NoEditTriggers)
     tabla.verticalHeader().setVisible(False)
+    tabla.verticalHeader().setDefaultSectionSize(42)
+    tabla.setShowGrid(False)
     header = tabla.horizontalHeader()
     header.setSectionResizeMode(QHeaderView.Interactive)
     header.setStretchLastSection(True)
@@ -178,25 +214,27 @@ class MainWindow(QMainWindow):
         self.service = WorkshopService(db, config)
         self.wa = WhatsAppCenter(db, config)
         self.nav_buttons: list[QPushButton] = []
+        self.stage_buttons: list[QPushButton] = []
+        self.etapa_filtro: str = "Todas"
 
-        nombre_negocio = self.config.get("identidad", "nombre_establecimiento", "ABCell Tizimin")
-        self.setWindowTitle(f"{nombre_negocio} — Sistema de Gestión de Taller")
-        self.resize(1320, 800)
-        self.setMinimumSize(1024, 680)
+        nombre_negocio = self.config.get("identidad", "nombre_establecimiento", "ABCell")
+        self.setWindowTitle(f"{nombre_negocio} — Taller")
+        self.resize(1360, 820)
+        self.setMinimumSize(1060, 700)
 
         self._build_ui()
         self.aplicar_tema()
         self.refrescar_todo()
 
     def _es_tema_claro(self) -> bool:
-        tema = str(self.config.get("apariencia", "tema", "Oscuro")).strip().lower()
-        return tema.startswith("claro") or tema.startswith("blanco")
+        tema = str(self.config.get("apariencia", "tema", "Claro")).strip().lower()
+        return not tema.startswith("oscuro") and not tema.startswith("negro")
 
     def aplicar_tema(self):
         es_claro = self._es_tema_claro()
         self.setStyleSheet(LIGHT_QSS if es_claro else DARK_QSS)
         if hasattr(self, "btn_toggle_tema"):
-            self.btn_toggle_tema.setText("Tema: Oscuro" if es_claro else "Tema: Claro")
+            self.btn_toggle_tema.setText("Modo Oscuro" if es_claro else "Modo Claro")
         if hasattr(self, "cfg_tema"):
             self.cfg_tema.blockSignals(True)
             self.cfg_tema.setCurrentText("Claro" if es_claro else "Oscuro")
@@ -211,88 +249,127 @@ class MainWindow(QMainWindow):
     def _build_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
-        root = QHBoxLayout(central)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
+        outer = QVBoxLayout(central)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
 
-        # Barra lateral
+        # Barra superior estilo referencia
+        topbar = QFrame()
+        topbar.setObjectName("TopBar")
+        topbar.setFixedHeight(52)
+        tb_lay = QHBoxLayout(topbar)
+        tb_lay.setContentsMargins(16, 8, 16, 8)
+        tb_lay.setSpacing(10)
+
+        self.txt_global_search = QLineEdit()
+        self.txt_global_search.setPlaceholderText("Buscar [ENTER] en órdenes o clientes...")
+        self.txt_global_search.setMinimumWidth(260)
+        self.txt_global_search.setMaximumWidth(360)
+        self.txt_global_search.returnPressed.connect(self._buscar_global)
+
+        lbl_fecha = QLabel(datetime.now().strftime("%d/%m/%Y"))
+        lbl_fecha.setObjectName("CardSub")
+
+        self.btn_toggle_tema = QPushButton("Modo Oscuro")
+        self.btn_toggle_tema.setMinimumWidth(115)
+        self.btn_toggle_tema.clicked.connect(self.alternar_tema_rapido)
+
+        btn_quick_new = QPushButton("+ Nueva Orden")
+        btn_quick_new.setObjectName("PrimaryBtn")
+        btn_quick_new.setMinimumWidth(125)
+        btn_quick_new.clicked.connect(lambda: self.ir_a_seccion(1))
+
+        tb_lay.addWidget(self.txt_global_search)
+        tb_lay.addWidget(lbl_fecha)
+        tb_lay.addStretch()
+        tb_lay.addWidget(self.btn_toggle_tema)
+        tb_lay.addWidget(btn_quick_new)
+        outer.addWidget(topbar)
+
+        body = QHBoxLayout()
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(0)
+
+        # Barra lateral limpia
         sidebar = QFrame()
         sidebar.setObjectName("Sidebar")
-        sidebar.setFixedWidth(230)
+        sidebar.setFixedWidth(225)
         sb_lay = QVBoxLayout(sidebar)
-        sb_lay.setContentsMargins(12, 18, 12, 18)
-        sb_lay.setSpacing(6)
+        sb_lay.setContentsMargins(12, 16, 12, 16)
+        sb_lay.setSpacing(4)
 
+        brand_row = QHBoxLayout()
+        brand_row.setSpacing(8)
         self.lbl_logo_sidebar = QLabel()
+        self.lbl_logo_sidebar.setFixedSize(36, 36)
         self.lbl_logo_sidebar.setAlignment(Qt.AlignCenter)
-        self._cargar_logo_widget(self.lbl_logo_sidebar, 68)
-        sb_lay.addWidget(self.lbl_logo_sidebar)
+        self._cargar_logo_widget(self.lbl_logo_sidebar, 34)
 
         self.lbl_brand_sidebar = QLabel(
-            self.config.get("identidad", "nombre_establecimiento", "ABCell Pro")
+            self.config.get("identidad", "nombre_establecimiento", "ABCell")
         )
         self.lbl_brand_sidebar.setObjectName("BrandTitle")
-        self.lbl_brand_sidebar.setAlignment(Qt.AlignCenter)
         self.lbl_brand_sidebar.setWordWrap(True)
-        sb_lay.addWidget(self.lbl_brand_sidebar)
+        brand_row.addWidget(self.lbl_logo_sidebar)
+        brand_row.addWidget(self.lbl_brand_sidebar, 1)
+        sb_lay.addLayout(brand_row)
 
-        line = QFrame()
-        line.setFrameShape(QFrame.HLine)
-        line.setStyleSheet("background-color: #1e293b; max-height: 1px; margin: 6px 0;")
-        sb_lay.addWidget(line)
+        sb_lay.addSpacing(10)
 
         secciones = [
-            ("Dashboard", 0),
-            ("Nueva Orden", 1),
-            ("Órdenes y Taller", 2),
-            ("Clientes", 3),
-            ("Catálogo y Ubicaciones", 4),
-            ("Reportes Financieros", 5),
-            ("WhatsApp y Tickets", 6),
-            ("Configuración", 7),
+            ("Órdenes de trabajo", 0),
+            ("Nueva orden", 1),
+            ("Clientes (Historial)", 2),
+            ("Catálogo y Ubicaciones", 3),
+            ("Estadísticas y Caja", 4),
+            ("WhatsApp y Tickets", 5),
+            ("Configuración de taller", 6),
         ]
         for texto, idx in secciones:
             btn = QPushButton(texto)
             btn.setObjectName("NavBtn")
-            btn.setMinimumHeight(38)
+            btn.setMinimumHeight(36)
             btn.clicked.connect(lambda checked=False, i=idx: self.ir_a_seccion(i))
             sb_lay.addWidget(btn)
             self.nav_buttons.append(btn)
 
         sb_lay.addStretch()
 
-        self.btn_toggle_tema = QPushButton("Tema: Claro")
-        self.btn_toggle_tema.setMinimumHeight(36)
-        self.btn_toggle_tema.clicked.connect(self.alternar_tema_rapido)
-        sb_lay.addWidget(self.btn_toggle_tema)
-
-        btn_sync = QPushButton("Actualizar datos")
-        btn_sync.setMinimumHeight(36)
+        btn_sync = QPushButton("Refrescar datos")
+        btn_sync.setMinimumHeight(34)
         btn_sync.clicked.connect(self.refrescar_todo)
         sb_lay.addWidget(btn_sync)
 
-        root.addWidget(sidebar)
+        body.addWidget(sidebar)
 
-        # Contenedor principal
         self.stack = QStackedWidget()
-        root.addWidget(self.stack, 1)
+        body.addWidget(self.stack, 1)
 
-        self.stack.addWidget(self._build_dashboard_tab())
+        self.stack.addWidget(self._build_taller_ordenes_tab())
         self.stack.addWidget(self._build_nueva_orden_tab())
-        self.stack.addWidget(self._build_ordenes_tab())
         self.stack.addWidget(self._build_clientes_tab())
         self.stack.addWidget(self._build_catalogo_ubicaciones_tab())
         self.stack.addWidget(self._build_reportes_tab())
         self.stack.addWidget(self._build_wa_tickets_tab())
         self.stack.addWidget(self._build_config_tab())
 
+        outer.addLayout(body, 1)
         self.ir_a_seccion(0)
+
+    def _buscar_global(self):
+        texto = self.txt_global_search.text().strip()
+        self.ir_a_seccion(0)
+        if hasattr(self, "txt_buscar_orden"):
+            self.txt_buscar_orden.setText(texto)
+            self.refrescar_ordenes()
 
     def _cargar_logo_widget(self, label: QLabel, tam: int):
         pil_img = logo_color_pil(self.config)
         if pil_img is None:
-            label.setText("ABCell")
-            label.setStyleSheet("font-size: 16px; font-weight: 700; color: #38bdf8; padding: 4px;")
+            label.setText("AB")
+            label.setStyleSheet(
+                "background-color: #e0f2fe; color: #0284c7; border-radius: 10px; font-weight: 800; font-size: 13px;"
+            )
             return
         tmp_path = os.path.join(os.path.dirname(self.db.db_path), "_tmp_logo_ui.png")
         pil_img.save(tmp_path)
@@ -309,100 +386,210 @@ class MainWindow(QMainWindow):
         self.refrescar_todo()
 
     # ------------------------------------------
-    # 0. DASHBOARD
+    # 0. TALLER Y ÓRDENES (ESTILO REFERENCIA)
     # ------------------------------------------
-    def _build_dashboard_tab(self) -> QWidget:
+    def _build_taller_ordenes_tab(self) -> QWidget:
         w = QWidget()
         lay = QVBoxLayout(w)
-        lay.setContentsMargins(22, 20, 22, 20)
-        lay.setSpacing(14)
+        lay.setContentsMargins(22, 16, 22, 16)
+        lay.setSpacing(12)
 
-        top = QHBoxLayout()
-        lbl_t = QLabel("Panel de Control del Taller")
+        # Cabecera con título, ruta y botón "+ Crear"
+        head_row = QHBoxLayout()
+        title_box = QVBoxLayout()
+        title_box.setSpacing(2)
+        lbl_t = QLabel("Taller")
         lbl_t.setObjectName("Title")
-        top.addWidget(lbl_t)
-        top.addStretch()
-        top.addWidget(QLabel("Categoría:"))
-        self.cmb_dash_cat = QComboBox()
-        self.cmb_dash_cat.setMinimumWidth(140)
-        self.cmb_dash_cat.addItems(["Todas"] + CATEGORIAS_EQUIPO)
-        self.cmb_dash_cat.currentTextChanged.connect(self.refrescar_dashboard)
-        top.addWidget(self.cmb_dash_cat)
-        lay.addLayout(top)
+        lbl_bc = QLabel("Principal › Taller › Órdenes")
+        lbl_bc.setObjectName("Breadcrumb")
+        title_box.addWidget(lbl_t)
+        title_box.addWidget(lbl_bc)
 
+        btn_crear = QPushButton("+ Crear")
+        btn_crear.setObjectName("PrimaryBtn")
+        btn_crear.setMinimumWidth(115)
+        btn_crear.setMinimumHeight(34)
+        btn_crear.clicked.connect(lambda: self.ir_a_seccion(1))
+
+        head_row.addLayout(title_box)
+        head_row.addStretch()
+        head_row.addWidget(btn_crear)
+        lay.addLayout(head_row)
+
+        # 3 tarjetas superiores estilo referencia
         cards_row = QHBoxLayout()
-        cards_row.setSpacing(12)
-        c1, self.m_activas, _ = _make_card("Órdenes Activas", "0", "En proceso en taller")
-        c2, self.m_listas, _ = _make_card("Listas para Entregar", "0", "Esperando al cliente")
-        c3, self.m_7dias, _ = _make_card("Guardados +7 Días", "0", "Requieren seguimiento")
-        c4, self.m_cobrado, _ = _make_card("Anticipos / Cobrado", "$0.00", "Pagos recibidos")
-        c5, self.m_saldo, _ = _make_card("Saldo Pendiente", "$0.00", "Por cobrar en activas")
-        for c in (c1, c2, c3, c4, c5):
-            cards_row.addWidget(c)
+        cards_row.setSpacing(14)
+
+        c1, self.lbl_c1_sub, self.lbl_c1_link = _make_summary_card(
+            "Estado del taller", "¡Todo en orden!", "Ver activas", "#dcfce7", "#16a34a"
+        )
+        c2, self.lbl_c2_sub, self.lbl_c2_link = _make_summary_card(
+            "Órdenes abiertas", "0 Abiertas", "Listado", "#e0f2fe", "#0284c7"
+        )
+        c3, self.lbl_c3_sub, self.lbl_c3_link = _make_summary_card(
+            "Saldo por cobrar", "$0.00", "WhatsApp", "#fef3c7", "#d97706"
+        )
+
+        cards_row.addWidget(c1)
+        cards_row.addWidget(c2)
+        cards_row.addWidget(c3)
         lay.addLayout(cards_row)
 
-        tables_row = QHBoxLayout()
-        tables_row.setSpacing(14)
+        # Pestañas de flujo (Entrada / Reparación / Salida / Todas)
+        stage_bar = QHBoxLayout()
+        stage_bar.setSpacing(6)
+        etapas = [
+            ("Todas", "Todas"),
+            ("Entrada", "Entrada"),
+            ("Reparación", "Reparación"),
+            ("Salida", "Salida"),
+        ]
+        self.stage_buttons.clear()
+        for etiqueta, clave in etapas:
+            b = QPushButton(etiqueta)
+            b.setObjectName("StageTab")
+            b.setProperty("active", clave == self.etapa_filtro)
+            b.clicked.connect(lambda checked=False, k=clave: self._seleccionar_etapa(k))
+            stage_bar.addWidget(b)
+            self.stage_buttons.append(b)
+        stage_bar.addStretch()
+        lay.addLayout(stage_bar)
 
-        box_listos = QFrame()
-        box_listos.setObjectName("Card")
-        l1 = QVBoxLayout(box_listos)
-        l1.addWidget(QLabel("Equipos Listos para Entregar / +7 Días"))
-        self.tbl_dash_listos = QTableWidget(0, 5)
-        self.tbl_dash_listos.setHorizontalHeaderLabels(["Folio", "Cliente", "Equipo", "Días", "Saldo"])
-        _configurar_tabla(self.tbl_dash_listos, stretch_col=1)
-        l1.addWidget(self.tbl_dash_listos)
+        # Sub-barra de conteo tipo "Cantidad: X Órdenes"
+        sub_bar = QFrame()
+        sub_bar.setObjectName("SubBar")
+        sb_l = QHBoxLayout(sub_bar)
+        sb_l.setContentsMargins(16, 10, 16, 10)
+        self.lbl_contador_ordenes = QLabel("Cantidad: 0 Órdenes")
+        self.lbl_contador_ordenes.setObjectName("CardSub")
+        self.lbl_resumen_extra = QLabel("Listas para entrega: 0")
+        self.lbl_resumen_extra.setObjectName("CardSub")
+        sb_l.addWidget(self.lbl_contador_ordenes)
+        sb_l.addStretch()
+        sb_l.addWidget(self.lbl_resumen_extra)
+        lay.addWidget(sub_bar)
 
-        box_recientes = QFrame()
-        box_recientes.setObjectName("Card")
-        l2 = QVBoxLayout(box_recientes)
-        l2.addWidget(QLabel("Actividad Reciente de Órdenes"))
-        self.tbl_dash_recientes = QTableWidget(0, 5)
-        self.tbl_dash_recientes.setHorizontalHeaderLabels(["Folio", "Cliente", "Equipo", "Estatus", "Ubicación"])
-        _configurar_tabla(self.tbl_dash_recientes, stretch_col=1)
-        l2.addWidget(self.tbl_dash_recientes)
+        # Contenedor principal con cabecera de tabla + buscador + filtros
+        tbl_card = QFrame()
+        tbl_card.setObjectName("Card")
+        tc_lay = QVBoxLayout(tbl_card)
+        tc_lay.setContentsMargins(16, 14, 16, 14)
+        tc_lay.setSpacing(10)
 
-        tables_row.addWidget(box_listos)
-        tables_row.addWidget(box_recientes)
-        lay.addLayout(tables_row, 1)
+        t_head = QHBoxLayout()
+        t_head.setSpacing(8)
+        lbl_o = QLabel("Órdenes")
+        lbl_o.setObjectName("Title")
+        t_head.addWidget(lbl_o)
+        t_head.addStretch()
+
+        self.txt_buscar_orden = QLineEdit()
+        self.txt_buscar_orden.setPlaceholderText("Buscar [ENTER]")
+        self.txt_buscar_orden.setMinimumWidth(220)
+        self.txt_buscar_orden.textChanged.connect(self.refrescar_ordenes)
+
+        self.cmb_filtro_estatus = QComboBox()
+        self.cmb_filtro_estatus.setMinimumWidth(155)
+        self.cmb_filtro_estatus.addItems(["Todos"] + ESTATUS_ORDEN)
+        self.cmb_filtro_estatus.currentTextChanged.connect(self.refrescar_ordenes)
+
+        self.cmb_filtro_cat = QComboBox()
+        self.cmb_filtro_cat.setMinimumWidth(135)
+        self.cmb_filtro_cat.addItems(["Todas"] + CATEGORIAS_EQUIPO)
+        self.cmb_filtro_cat.currentTextChanged.connect(self.refrescar_ordenes)
+
+        t_head.addWidget(self.txt_buscar_orden)
+        t_head.addWidget(self.cmb_filtro_estatus)
+        t_head.addWidget(self.cmb_filtro_cat)
+        tc_lay.addLayout(t_head)
+
+        self.tbl_ordenes = QTableWidget(0, 8)
+        self.tbl_ordenes.setHorizontalHeaderLabels(
+            ["N°", "ESTADO", "MODELO", "CLIENTE", "UBICACIÓN", "FALLA", "PRECIO", "SALDO"]
+        )
+        _configurar_tabla(self.tbl_ordenes, stretch_col=5)
+        self.tbl_ordenes.itemSelectionChanged.connect(self._cargar_orden_seleccionada)
+        tc_lay.addWidget(self.tbl_ordenes, 1)
+
+        lay.addWidget(tbl_card, 1)
+
+        # Barra inferior de acciones de la orden seleccionada (2 filas sin cortes)
+        panel_accion = QFrame()
+        panel_accion.setObjectName("SubBar")
+        pa_lay = QVBoxLayout(panel_accion)
+        pa_lay.setContentsMargins(14, 10, 14, 10)
+        pa_lay.setSpacing(8)
+
+        f1 = QHBoxLayout()
+        f1.setSpacing(8)
+        self.lbl_folio_sel = QLabel("Selecciona una orden")
+        self.lbl_folio_sel.setObjectName("FolioBadge")
+        self.lbl_folio_sel.setMinimumWidth(220)
+        f1.addWidget(self.lbl_folio_sel)
+
+        f1.addWidget(QLabel("Estado:"))
+        self.cmb_orden_estatus = QComboBox()
+        self.cmb_orden_estatus.setMinimumWidth(160)
+        self.cmb_orden_estatus.addItems(ESTATUS_ORDEN)
+        f1.addWidget(self.cmb_orden_estatus)
+
+        f1.addWidget(QLabel("Ubicación:"))
+        self.cmb_orden_ubicacion = QComboBox()
+        self.cmb_orden_ubicacion.setMinimumWidth(155)
+        f1.addWidget(self.cmb_orden_ubicacion)
+
+        f1.addStretch()
+
+        btn_act_orden = QPushButton("Guardar Estado / Ubicación")
+        btn_act_orden.setMinimumWidth(190)
+        btn_act_orden.clicked.connect(self._actualizar_orden_sel)
+        f1.addWidget(btn_act_orden)
+        pa_lay.addLayout(f1)
+
+        f2 = QHBoxLayout()
+        f2.setSpacing(8)
+        f2.addWidget(QLabel("Abono:"))
+        self.spn_orden_abono = QDoubleSpinBox()
+        self.spn_orden_abono.setRange(0, 999999)
+        self.spn_orden_abono.setDecimals(2)
+        self.spn_orden_abono.setMinimumWidth(115)
+        f2.addWidget(self.spn_orden_abono)
+
+        f2.addWidget(QLabel("Método:"))
+        self.cmb_orden_mpago = QComboBox()
+        self.cmb_orden_mpago.setMinimumWidth(130)
+        self.cmb_orden_mpago.addItems(METODOS_PAGO)
+        f2.addWidget(self.cmb_orden_mpago)
+
+        btn_abonar = QPushButton("Registrar Abono")
+        btn_abonar.setObjectName("PrimaryBtn")
+        btn_abonar.setMinimumWidth(145)
+        btn_abonar.clicked.connect(self._abonar_orden_sel)
+        f2.addWidget(btn_abonar)
+
+        f2.addStretch()
+
+        btn_ticket = QPushButton("Ticket 58mm")
+        btn_ticket.setMinimumWidth(125)
+        btn_ticket.clicked.connect(self._imprimir_orden_sel)
+        f2.addWidget(btn_ticket)
+
+        btn_wa = QPushButton("WhatsApp")
+        btn_wa.setMinimumWidth(120)
+        btn_wa.clicked.connect(self._enviar_wa_orden_sel)
+        f2.addWidget(btn_wa)
+
+        pa_lay.addLayout(f2)
+        lay.addWidget(panel_accion)
         return w
 
-    def refrescar_dashboard(self):
-        simbolo = self.config.get("regional", "simbolo_moneda", "$")
-        cat = self.cmb_dash_cat.currentText() if hasattr(self, "cmb_dash_cat") else "Todas"
-        m = self.service.obtener_metricas_dashboard(cat)
-
-        self.m_activas.setText(str(m["activas"]))
-        self.m_listas.setText(str(m["por_entregar"]))
-        self.m_7dias.setText(str(m["guardados_7"]))
-        self.m_cobrado.setText(f"{simbolo}{m['anticipos_totales']:,.2f}")
-        self.m_saldo.setText(f"{simbolo}{m['saldos_pendientes']:,.2f}")
-
-        self.tbl_dash_listos.setRowCount(0)
-        for r_idx, o in enumerate(m["lista_por_entregar"]):
-            self.tbl_dash_listos.insertRow(r_idx)
-            vals = [
-                f"#{int(o['folio']):04d}",
-                o.get("cliente_nombre", ""),
-                f"{o.get('marca', '')} {o.get('modelo', '')}".strip(),
-                f"{o.get('dias_espera', 0)} d",
-                f"{simbolo}{float(o.get('saldo') or 0.0):,.2f}",
-            ]
-            for c_idx, val in enumerate(vals):
-                self.tbl_dash_listos.setItem(r_idx, c_idx, QTableWidgetItem(val))
-
-        self.tbl_dash_recientes.setRowCount(0)
-        for r_idx, o in enumerate(m["actividad_reciente"]):
-            self.tbl_dash_recientes.insertRow(r_idx)
-            vals = [
-                f"#{int(o['folio']):04d}",
-                o.get("cliente_nombre", ""),
-                f"{o.get('marca', '')} {o.get('modelo', '')}".strip(),
-                o.get("estatus", ""),
-                o.get("ubicacion", ""),
-            ]
-            for c_idx, val in enumerate(vals):
-                self.tbl_dash_recientes.setItem(r_idx, c_idx, QTableWidgetItem(val))
+    def _seleccionar_etapa(self, etapa: str):
+        self.etapa_filtro = etapa
+        for btn in self.stage_buttons:
+            btn.setProperty("active", btn.text() == etapa)
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
+        self.refrescar_ordenes()
 
     # ------------------------------------------
     # 1. NUEVA ORDEN
@@ -413,10 +600,10 @@ class MainWindow(QMainWindow):
         scroll.setFrameShape(QFrame.NoFrame)
         w = QWidget()
         lay = QVBoxLayout(w)
-        lay.setContentsMargins(22, 20, 22, 20)
+        lay.setContentsMargins(22, 18, 22, 18)
         lay.setSpacing(12)
 
-        lbl = QLabel("Registrar Nueva Orden de Servicio")
+        lbl = QLabel("Registrar Nueva Orden de Trabajo")
         lbl.setObjectName("Title")
         lay.addWidget(lbl)
 
@@ -435,11 +622,11 @@ class MainWindow(QMainWindow):
         self.no_cat.addItems(CATEGORIAS_EQUIPO)
 
         self.no_marca = QLineEdit()
-        self.no_marca.setPlaceholderText("Ej. Samsung, iPhone, Xiaomi")
+        self.no_marca.setPlaceholderText("Ej. Samsung, Apple, Asus")
         self.no_modelo = QLineEdit()
-        self.no_modelo.setPlaceholderText("Ej. A54, iPhone 13, Redmi Note 12")
+        self.no_modelo.setPlaceholderText("Ej. Galaxy A54, Vivobook Go 15")
         self.no_color = QLineEdit()
-        self.no_color.setPlaceholderText("Ej. Negro, Azul")
+        self.no_color.setPlaceholderText("Ej. Negro, Plata")
 
         self.no_imei = QLineEdit()
         self.no_pin = QLineEdit()
@@ -448,13 +635,13 @@ class MainWindow(QMainWindow):
         self.no_patron.setEditable(True)
 
         self.no_estado_fisico = QLineEdit()
-        self.no_estado_fisico.setPlaceholderText("Ej. Rayones leves en marco, tapa trasera intacta")
+        self.no_estado_fisico.setPlaceholderText("Observaciones físicas al recibir")
 
         self.no_servicio_cat = QComboBox()
         self.no_servicio_cat.currentIndexChanged.connect(self._aplicar_servicio_catalogo)
 
         self.no_falla = QLineEdit()
-        self.no_falla.setPlaceholderText("Describe la falla o servicio solicitado")
+        self.no_falla.setPlaceholderText("Falla o servicio solicitado")
 
         self.no_ubicacion = QComboBox()
 
@@ -479,7 +666,7 @@ class MainWindow(QMainWindow):
         self.lbl_no_saldo.setObjectName("MetricValue")
 
         self.no_notas = QPlainTextEdit()
-        self.no_notas.setMaximumHeight(70)
+        self.no_notas.setMaximumHeight(68)
 
         form.addRow("Cliente *:", self.no_cliente)
         form.addRow("Teléfono / WA *:", self.no_tel)
@@ -506,11 +693,11 @@ class MainWindow(QMainWindow):
         btns = QHBoxLayout()
         btn_guardar = QPushButton("Guardar Orden")
         btn_guardar.setObjectName("PrimaryBtn")
-        btn_guardar.setMinimumWidth(140)
+        btn_guardar.setMinimumWidth(145)
         btn_guardar.clicked.connect(self._guardar_nueva_orden)
 
-        btn_limpiar = QPushButton("Limpiar campos")
-        btn_limpiar.setMinimumWidth(130)
+        btn_limpiar = QPushButton("Limpiar")
+        btn_limpiar.setMinimumWidth(115)
         btn_limpiar.clicked.connect(self._limpiar_nueva_orden)
 
         btns.addStretch()
@@ -617,125 +804,9 @@ class MainWindow(QMainWindow):
             "notas_internas": self.no_notas.toPlainText(),
         }
         folio = self.service.crear_orden(datos)
-        QMessageBox.information(self, "Orden creada", f"Se registró la orden #{folio:04d} correctamente.")
+        QMessageBox.information(self, "Orden creada", f"Se registró la orden #{folio:04d}.")
         self._limpiar_nueva_orden()
-        self.ir_a_seccion(2)
-
-    # ------------------------------------------
-    # 2. ÓRDENES Y TALLER
-    # ------------------------------------------
-    def _build_ordenes_tab(self) -> QWidget:
-        w = QWidget()
-        lay = QVBoxLayout(w)
-        lay.setContentsMargins(22, 20, 22, 20)
-        lay.setSpacing(12)
-
-        lbl = QLabel("Órdenes y Control de Taller")
-        lbl.setObjectName("Title")
-        lay.addWidget(lbl)
-
-        filtros = QHBoxLayout()
-        filtros.setSpacing(10)
-        self.txt_buscar_orden = QLineEdit()
-        self.txt_buscar_orden.setPlaceholderText(
-            "Buscar por folio, cliente, teléfono, marca, modelo o ubicación..."
-        )
-        self.txt_buscar_orden.textChanged.connect(self.refrescar_ordenes)
-
-        self.cmb_filtro_estatus = QComboBox()
-        self.cmb_filtro_estatus.setMinimumWidth(160)
-        self.cmb_filtro_estatus.addItems(["Todos"] + ESTATUS_ORDEN)
-        self.cmb_filtro_estatus.currentTextChanged.connect(self.refrescar_ordenes)
-
-        self.cmb_filtro_cat = QComboBox()
-        self.cmb_filtro_cat.setMinimumWidth(140)
-        self.cmb_filtro_cat.addItems(["Todas"] + CATEGORIAS_EQUIPO)
-        self.cmb_filtro_cat.currentTextChanged.connect(self.refrescar_ordenes)
-
-        filtros.addWidget(self.txt_buscar_orden, 2)
-        filtros.addWidget(self.cmb_filtro_estatus)
-        filtros.addWidget(self.cmb_filtro_cat)
-        lay.addLayout(filtros)
-
-        self.tbl_ordenes = QTableWidget(0, 8)
-        self.tbl_ordenes.setHorizontalHeaderLabels(
-            ["Folio", "Cliente", "Equipo", "Falla", "Estatus", "Ubicación", "Total", "Saldo"]
-        )
-        _configurar_tabla(self.tbl_ordenes, stretch_col=3)
-        self.tbl_ordenes.itemSelectionChanged.connect(self._cargar_orden_seleccionada)
-        lay.addWidget(self.tbl_ordenes, 1)
-
-        panel_accion = QFrame()
-        panel_accion.setObjectName("Card")
-        pa_lay = QVBoxLayout(panel_accion)
-        pa_lay.setContentsMargins(14, 12, 14, 12)
-        pa_lay.setSpacing(10)
-
-        fila_sup = QHBoxLayout()
-        fila_sup.setSpacing(10)
-
-        self.lbl_folio_sel = QLabel("Selecciona una orden")
-        self.lbl_folio_sel.setObjectName("FolioBadge")
-        self.lbl_folio_sel.setMinimumWidth(210)
-        fila_sup.addWidget(self.lbl_folio_sel)
-
-        fila_sup.addWidget(QLabel("Estatus:"))
-        self.cmb_orden_estatus = QComboBox()
-        self.cmb_orden_estatus.setMinimumWidth(165)
-        self.cmb_orden_estatus.addItems(ESTATUS_ORDEN)
-        fila_sup.addWidget(self.cmb_orden_estatus)
-
-        fila_sup.addWidget(QLabel("Ubicación:"))
-        self.cmb_orden_ubicacion = QComboBox()
-        self.cmb_orden_ubicacion.setMinimumWidth(165)
-        fila_sup.addWidget(self.cmb_orden_ubicacion)
-
-        fila_sup.addStretch()
-
-        btn_act_orden = QPushButton("Guardar Estatus / Ubicación")
-        btn_act_orden.setMinimumWidth(195)
-        btn_act_orden.clicked.connect(self._actualizar_orden_sel)
-        fila_sup.addWidget(btn_act_orden)
-
-        pa_lay.addLayout(fila_sup)
-
-        fila_inf = QHBoxLayout()
-        fila_inf.setSpacing(10)
-
-        fila_inf.addWidget(QLabel("Abono:"))
-        self.spn_orden_abono = QDoubleSpinBox()
-        self.spn_orden_abono.setRange(0, 999999)
-        self.spn_orden_abono.setDecimals(2)
-        self.spn_orden_abono.setMinimumWidth(120)
-        fila_inf.addWidget(self.spn_orden_abono)
-
-        fila_inf.addWidget(QLabel("Método:"))
-        self.cmb_orden_mpago = QComboBox()
-        self.cmb_orden_mpago.setMinimumWidth(135)
-        self.cmb_orden_mpago.addItems(METODOS_PAGO)
-        fila_inf.addWidget(self.cmb_orden_mpago)
-
-        btn_abonar = QPushButton("Registrar Abono")
-        btn_abonar.setObjectName("PrimaryBtn")
-        btn_abonar.setMinimumWidth(145)
-        btn_abonar.clicked.connect(self._abonar_orden_sel)
-        fila_inf.addWidget(btn_abonar)
-
-        fila_inf.addStretch()
-
-        btn_ticket = QPushButton("Imprimir Ticket 58mm")
-        btn_ticket.setMinimumWidth(165)
-        btn_ticket.clicked.connect(self._imprimir_orden_sel)
-        fila_inf.addWidget(btn_ticket)
-
-        btn_wa = QPushButton("Enviar WhatsApp")
-        btn_wa.setMinimumWidth(150)
-        btn_wa.clicked.connect(self._enviar_wa_orden_sel)
-        fila_inf.addWidget(btn_wa)
-
-        pa_lay.addLayout(fila_inf)
-        lay.addWidget(panel_accion)
-        return w
+        self.ir_a_seccion(0)
 
     def _folio_seleccionado(self) -> int | None:
         row = self.tbl_ordenes.currentRow()
@@ -755,21 +826,45 @@ class MainWindow(QMainWindow):
             estatus=self.cmb_filtro_estatus.currentText(),
             categoria=self.cmb_filtro_cat.currentText(),
         )
+
+        if self.etapa_filtro == "Entrada":
+            ordenes = [o for o in ordenes if o.get("estatus") in ("Recibido", "En diagnóstico")]
+        elif self.etapa_filtro == "Reparación":
+            ordenes = [
+                o for o in ordenes if o.get("estatus") in ("Esperando refacción", "En reparación")
+            ]
+        elif self.etapa_filtro == "Salida":
+            ordenes = [
+                o for o in ordenes if o.get("estatus") in ("Listo para entregar", "Entregado")
+            ]
+
         self.tbl_ordenes.setRowCount(0)
         for idx, o in enumerate(ordenes):
             self.tbl_ordenes.insertRow(idx)
+            modelo_txt = f"{o.get('marca', '')} {o.get('modelo', '')}".strip()
             vals = [
                 f"#{int(o['folio']):04d}",
-                o.get("cliente_nombre", ""),
-                f"{o.get('marca', '')} {o.get('modelo', '')}".strip(),
-                o.get("falla", ""),
                 o.get("estatus", ""),
+                modelo_txt,
+                o.get("cliente_nombre", ""),
                 o.get("ubicacion", ""),
+                o.get("falla", ""),
                 f"{simbolo}{float(o.get('costo_total') or 0.0):,.2f}",
                 f"{simbolo}{float(o.get('saldo') or 0.0):,.2f}",
             ]
             for c_idx, val in enumerate(vals):
                 self.tbl_ordenes.setItem(idx, c_idx, QTableWidgetItem(val))
+
+        self.lbl_contador_ordenes.setText(f"Cantidad: {len(ordenes)} Órdenes")
+
+        metricas = self.service.obtener_metricas_dashboard("Todas")
+        self.lbl_c2_sub.setText(f"{metricas['activas']} Abiertas")
+        self.lbl_c3_sub.setText(f"{simbolo}{metricas['saldos_pendientes']:,.2f}")
+        self.lbl_resumen_extra.setText(f"Listas para entrega: {metricas['por_entregar']}")
+        if metricas["guardados_7"] > 0:
+            self.lbl_c1_sub.setText(f"{metricas['guardados_7']} guardados +7 días")
+        else:
+            self.lbl_c1_sub.setText("¡Todo en orden!")
 
         ubicaciones = self.service.listar_ubicaciones(solo_activas=True)
         actual = self.cmb_orden_ubicacion.currentText()
@@ -788,7 +883,7 @@ class MainWindow(QMainWindow):
         o = self.service.obtener_orden(folio)
         if not o:
             return
-        self.lbl_folio_sel.setText(f"Folio #{folio:04d} — {o.get('cliente_nombre', '')}")
+        self.lbl_folio_sel.setText(f"Orden #{folio:04d} · {o.get('cliente_nombre', '')}")
         self.cmb_orden_estatus.setCurrentText(o.get("estatus", "Recibido"))
         idx_u = self.cmb_orden_ubicacion.findText(o.get("ubicacion", ""))
         if idx_u >= 0:
@@ -798,7 +893,7 @@ class MainWindow(QMainWindow):
     def _actualizar_orden_sel(self):
         folio = self._folio_seleccionado()
         if not folio:
-            QMessageBox.information(self, "Selecciona orden", "Primero selecciona una orden de la tabla.")
+            QMessageBox.information(self, "Selecciona orden", "Selecciona una orden de la tabla.")
             return
         o = self.service.obtener_orden(folio)
         if not o:
@@ -817,7 +912,7 @@ class MainWindow(QMainWindow):
     def _abonar_orden_sel(self):
         folio = self._folio_seleccionado()
         if not folio:
-            QMessageBox.information(self, "Selecciona orden", "Primero selecciona una orden de la tabla.")
+            QMessageBox.information(self, "Selecciona orden", "Selecciona una orden de la tabla.")
             return
         monto = self.spn_orden_abono.value()
         if monto <= 0:
@@ -825,12 +920,12 @@ class MainWindow(QMainWindow):
             return
         self.service.registrar_pago(folio, monto, self.cmb_orden_mpago.currentText())
         self.refrescar_ordenes()
-        QMessageBox.information(self, "Abono registrado", f"Abono aplicado a la orden #{folio:04d}.")
+        QMessageBox.information(self, "Abono registrado", f"Abono aplicado a #{folio:04d}.")
 
     def _imprimir_orden_sel(self):
         folio = self._folio_seleccionado()
         if not folio:
-            QMessageBox.information(self, "Selecciona orden", "Primero selecciona una orden de la tabla.")
+            QMessageBox.information(self, "Selecciona orden", "Selecciona una orden de la tabla.")
             return
         o = self.service.obtener_orden(folio)
         if not o:
@@ -846,7 +941,7 @@ class MainWindow(QMainWindow):
     def _enviar_wa_orden_sel(self):
         folio = self._folio_seleccionado()
         if not folio:
-            QMessageBox.information(self, "Selecciona orden", "Primero selecciona una orden de la tabla.")
+            QMessageBox.information(self, "Selecciona orden", "Selecciona una orden de la tabla.")
             return
         o = self.service.obtener_orden(folio)
         if not o:
@@ -860,15 +955,15 @@ class MainWindow(QMainWindow):
         webbrowser.open(url)
 
     # ------------------------------------------
-    # 3. CLIENTES
+    # 2. CLIENTES
     # ------------------------------------------
     def _build_clientes_tab(self) -> QWidget:
         w = QWidget()
         lay = QVBoxLayout(w)
-        lay.setContentsMargins(22, 20, 22, 20)
+        lay.setContentsMargins(22, 16, 22, 16)
         lay.setSpacing(12)
 
-        lbl = QLabel("Directorio y Expediente de Clientes")
+        lbl = QLabel("Clientes (Historial)")
         lbl.setObjectName("Title")
         lay.addWidget(lbl)
 
@@ -879,7 +974,7 @@ class MainWindow(QMainWindow):
 
         self.tbl_clientes = QTableWidget(0, 6)
         self.tbl_clientes.setHorizontalHeaderLabels(
-            ["ID", "Nombre", "Teléfono", "Órdenes", "Total Facturado", "Saldo Pendiente"]
+            ["ID", "NOMBRE", "TELÉFONO", "ÓRDENES", "TOTAL FACTURADO", "SALDO PENDIENTE"]
         )
         _configurar_tabla(self.tbl_clientes, stretch_col=1)
         lay.addWidget(self.tbl_clientes, 1)
@@ -905,21 +1000,20 @@ class MainWindow(QMainWindow):
                 self.tbl_clientes.setItem(idx, c_idx, QTableWidgetItem(val))
 
     # ------------------------------------------
-    # 4. CATÁLOGO Y UBICACIONES
+    # 3. CATÁLOGO Y UBICACIONES
     # ------------------------------------------
     def _build_catalogo_ubicaciones_tab(self) -> QWidget:
         w = QWidget()
         lay = QVBoxLayout(w)
-        lay.setContentsMargins(22, 20, 22, 20)
+        lay.setContentsMargins(22, 16, 22, 16)
         lay.setSpacing(12)
 
-        lbl = QLabel("Catálogo de Servicios y Ubicaciones Físicas")
+        lbl = QLabel("Catálogo de Servicios y Ubicaciones")
         lbl.setObjectName("Title")
         lay.addWidget(lbl)
 
         tabs = QTabWidget()
 
-        # Subpestaña Servicios
         p_serv = QWidget()
         l_serv = QVBoxLayout(p_serv)
         row_s = QHBoxLayout()
@@ -928,18 +1022,18 @@ class MainWindow(QMainWindow):
         self.s_cat.setMinimumWidth(125)
         self.s_cat.addItems(CATEGORIAS_EQUIPO)
         self.s_marca = QLineEdit()
-        self.s_marca.setPlaceholderText("Marca (opcional)")
+        self.s_marca.setPlaceholderText("Marca")
         self.s_modelo = QLineEdit()
-        self.s_modelo.setPlaceholderText("Modelo (opcional)")
+        self.s_modelo.setPlaceholderText("Modelo")
         self.s_nombre = QLineEdit()
-        self.s_nombre.setPlaceholderText("Nombre del servicio (ej. Cambio de pantalla)")
+        self.s_nombre.setPlaceholderText("Servicio (ej. Cambio de pantalla)")
         self.s_precio = QDoubleSpinBox()
         self.s_precio.setRange(0, 999999)
         self.s_precio.setDecimals(2)
         self.s_precio.setMinimumWidth(110)
-        btn_add_s = QPushButton("Agregar Servicio")
+        btn_add_s = QPushButton("+ Agregar")
         btn_add_s.setObjectName("PrimaryBtn")
-        btn_add_s.setMinimumWidth(140)
+        btn_add_s.setMinimumWidth(120)
         btn_add_s.clicked.connect(self._agregar_servicio)
         for widget in (self.s_cat, self.s_marca, self.s_modelo, self.s_nombre, self.s_precio, btn_add_s):
             row_s.addWidget(widget)
@@ -947,32 +1041,31 @@ class MainWindow(QMainWindow):
 
         self.tbl_servicios = QTableWidget(0, 5)
         self.tbl_servicios.setHorizontalHeaderLabels(
-            ["ID", "Categoría", "Marca / Modelo", "Servicio", "Precio"]
+            ["ID", "CATEGORÍA", "MARCA / MODELO", "SERVICIO", "PRECIO"]
         )
         _configurar_tabla(self.tbl_servicios, stretch_col=3)
         l_serv.addWidget(self.tbl_servicios, 1)
 
-        # Subpestaña Ubicaciones
         p_ub = QWidget()
         l_ub = QVBoxLayout(p_ub)
         row_u = QHBoxLayout()
         row_u.setSpacing(8)
         self.u_nombre = QLineEdit()
-        self.u_nombre.setPlaceholderText("Ej. Estante A-1, Gaveta 3")
+        self.u_nombre.setPlaceholderText("Ubicación (ej. Estante A-1)")
         self.u_tipo = QLineEdit()
-        self.u_tipo.setPlaceholderText("Tipo (Ej. Estante, Gaveta, Vitrinas)")
+        self.u_tipo.setPlaceholderText("Tipo")
         self.u_desc = QLineEdit()
         self.u_desc.setPlaceholderText("Descripción")
-        btn_add_u = QPushButton("Agregar Ubicación")
+        btn_add_u = QPushButton("+ Agregar")
         btn_add_u.setObjectName("PrimaryBtn")
-        btn_add_u.setMinimumWidth(150)
+        btn_add_u.setMinimumWidth(120)
         btn_add_u.clicked.connect(self._agregar_ubicacion)
         for widget in (self.u_nombre, self.u_tipo, self.u_desc, btn_add_u):
             row_u.addWidget(widget)
         l_ub.addLayout(row_u)
 
         self.tbl_ubicaciones = QTableWidget(0, 4)
-        self.tbl_ubicaciones.setHorizontalHeaderLabels(["ID", "Nombre", "Tipo", "Descripción"])
+        self.tbl_ubicaciones.setHorizontalHeaderLabels(["ID", "NOMBRE", "TIPO", "DESCRIPCIÓN"])
         _configurar_tabla(self.tbl_ubicaciones, stretch_col=3)
         l_ub.addWidget(self.tbl_ubicaciones, 1)
 
@@ -1038,33 +1131,33 @@ class MainWindow(QMainWindow):
         self._cargar_combos_orden()
 
     # ------------------------------------------
-    # 5. REPORTES FINANCIEROS
+    # 4. ESTADÍSTICAS Y CAJA
     # ------------------------------------------
     def _build_reportes_tab(self) -> QWidget:
         w = QWidget()
         lay = QVBoxLayout(w)
-        lay.setContentsMargins(22, 20, 22, 20)
-        lay.setSpacing(14)
+        lay.setContentsMargins(22, 16, 22, 16)
+        lay.setSpacing(12)
 
-        lbl = QLabel("Reportes Financieros y Ganancias")
+        lbl = QLabel("Estadísticas y Reportes Financieros")
         lbl.setObjectName("Title")
         lay.addWidget(lbl)
 
         row = QHBoxLayout()
         row.setSpacing(12)
-        c_dia, self.r_dia, _ = _make_card("Ingresos del Día", "$0.00")
-        c_mes, self.r_mes, _ = _make_card("Ingresos del Mes", "$0.00")
-        c_gan, self.r_gan, _ = _make_card(
-            "Ganancia Neta (Mes)", "$0.00", "Total órdenes mes menos repuestos"
+        c_dia, self.r_dia, _ = _make_metric_card("Ingresos del Día", "$0.00", "Abonos y cobros hoy")
+        c_mes, self.r_mes, _ = _make_metric_card("Ingresos del Mes", "$0.00", "Flujo mensual")
+        c_gan, self.r_gan, _ = _make_metric_card(
+            "Ganancia Neta (Mes)", "$0.00", "Total órdenes menos repuestos"
         )
-        c_sal, self.r_sal, _ = _make_card("Saldos por Cobrar", "$0.00")
+        c_sal, self.r_sal, _ = _make_metric_card("Saldos por Cobrar", "$0.00", "Pendiente en taller")
         for c in (c_dia, c_mes, c_gan, c_sal):
             row.addWidget(c)
         lay.addLayout(row)
 
         self.tbl_rep_cat = QTableWidget(0, 5)
         self.tbl_rep_cat.setHorizontalHeaderLabels(
-            ["Categoría", "Órdenes", "Facturado", "Costo Repuestos", "Ganancia Estimada"]
+            ["CATEGORÍA", "ÓRDENES", "FACTURADO", "COSTO REPUESTOS", "GANANCIA ESTIMADA"]
         )
         _configurar_tabla(self.tbl_rep_cat, stretch_col=0)
         lay.addWidget(self.tbl_rep_cat, 1)
@@ -1094,20 +1187,22 @@ class MainWindow(QMainWindow):
                 self.tbl_rep_cat.setItem(idx, c_i, QTableWidgetItem(val))
 
     # ------------------------------------------
-    # 6. WHATSAPP Y TICKETS
+    # 5. WHATSAPP Y TICKETS
     # ------------------------------------------
     def _build_wa_tickets_tab(self) -> QWidget:
         w = QWidget()
         lay = QVBoxLayout(w)
-        lay.setContentsMargins(22, 20, 22, 20)
+        lay.setContentsMargins(22, 16, 22, 16)
         lay.setSpacing(12)
 
-        lbl = QLabel("Historial de Notificaciones WhatsApp")
+        lbl = QLabel("WhatsApp y Historial de Notificaciones")
         lbl.setObjectName("Title")
         lay.addWidget(lbl)
 
         self.tbl_wa = QTableWidget(0, 6)
-        self.tbl_wa.setHorizontalHeaderLabels(["Folio", "Cliente", "Teléfono", "Tipo", "Fecha", "Mensaje"])
+        self.tbl_wa.setHorizontalHeaderLabels(
+            ["FOLIO", "CLIENTE", "TELÉFONO", "TIPO", "FECHA", "MENSAJE"]
+        )
         _configurar_tabla(self.tbl_wa, stretch_col=5)
         lay.addWidget(self.tbl_wa, 1)
         return w
@@ -1131,15 +1226,15 @@ class MainWindow(QMainWindow):
                 self.tbl_wa.setItem(i, c, QTableWidgetItem(v))
 
     # ------------------------------------------
-    # 7. CONFIGURACIÓN
+    # 6. CONFIGURACIÓN DE TALLER
     # ------------------------------------------
     def _build_config_tab(self) -> QWidget:
         w = QWidget()
         lay = QVBoxLayout(w)
-        lay.setContentsMargins(22, 20, 22, 20)
+        lay.setContentsMargins(22, 16, 22, 16)
         lay.setSpacing(12)
 
-        lbl = QLabel("Configuración del Establecimiento y Apariencia")
+        lbl = QLabel("Configuración de Taller")
         lbl.setObjectName("Title")
         lay.addWidget(lbl)
 
@@ -1150,13 +1245,13 @@ class MainWindow(QMainWindow):
         form.setContentsMargins(18, 18, 18, 18)
 
         self.cfg_nombre = QLineEdit(
-            self.config.get("identidad", "nombre_establecimiento", "ABCell Tizimin")
+            self.config.get("identidad", "nombre_establecimiento", "ABCell")
         )
         self.cfg_tel = QLineEdit(self.config.get("contacto", "telefono", ""))
         self.cfg_dir = QLineEdit(self.config.get("contacto", "direccion", ""))
         self.cfg_impresora = QLineEdit(self.config.get("notas", "impresora", ""))
         self.cfg_tema = QComboBox()
-        self.cfg_tema.addItems(["Oscuro", "Claro"])
+        self.cfg_tema.addItems(["Claro", "Oscuro"])
         self.cfg_tema.setCurrentText("Claro" if self._es_tema_claro() else "Oscuro")
         self.cfg_tema.currentTextChanged.connect(self._cambiar_tema_desde_combo)
 
@@ -1171,14 +1266,14 @@ class MainWindow(QMainWindow):
         form.addRow("Teléfono / WhatsApp:", self.cfg_tel)
         form.addRow("Dirección:", self.cfg_dir)
         form.addRow("Impresora 58mm:", self.cfg_impresora)
-        form.addRow("Tema visual (Oscuro / Claro):", self.cfg_tema)
+        form.addRow("Tema visual (Claro / Oscuro):", self.cfg_tema)
         form.addRow("Logo personalizado:", row_logo)
 
         lay.addWidget(card)
 
         btn_save = QPushButton("Guardar Configuración")
         btn_save.setObjectName("PrimaryBtn")
-        btn_save.setMinimumWidth(180)
+        btn_save.setMinimumWidth(185)
         btn_save.clicked.connect(self._guardar_config)
         lay.addWidget(btn_save, alignment=Qt.AlignRight)
         lay.addStretch()
@@ -1209,13 +1304,12 @@ class MainWindow(QMainWindow):
         self.config.save()
 
         self.aplicar_tema()
-        self.lbl_brand_sidebar.setText(self.cfg_nombre.text().strip() or "ABCell Pro")
-        self._cargar_logo_widget(self.lbl_logo_sidebar, 68)
+        self.lbl_brand_sidebar.setText(self.cfg_nombre.text().strip() or "ABCell")
+        self._cargar_logo_widget(self.lbl_logo_sidebar, 34)
         QMessageBox.information(self, "Guardado", "La configuración se guardó correctamente.")
         self.refrescar_todo()
 
     def refrescar_todo(self):
-        self.refrescar_dashboard()
         self._cargar_combos_orden()
         self.refrescar_ordenes()
         self.refrescar_clientes()
