@@ -1,31 +1,17 @@
-name: Compilar ABCell Pro .exe
-
-on:
-  workflow_dispatch:
-  push:
-    branches: [main]
-
-jobs:
-  build:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: pip install -r requirements.txt
-      - run: python -c "from integrations.printer_58mm import guardar_ico; guardar_ico('logo.ico')"
-      - run: >
-          pyinstaller --onefile --noconsole --icon logo.ico
-          --name ABCell_Gestion_Taller
-          --add-data "config;config"
-          --add-data "core;core"
-          --add-data "database;database"
-          --add-data "services;services"
-          --add-data "integrations;integrations"
-          --add-data "ui;ui"
-          main.py
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ABCell_Gestion_Taller_exe
-          path: dist/ABCell_Gestion_Taller.exe
+def guardar_ico(ruta: str = "logo.ico"):
+    logo = logo_color_pil() or logo_pil()
+    if logo is not None:
+        logo.convert("RGBA").save(
+            ruta,
+            sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
+        )
+        return
+    if Image is not None:
+        fallback = Image.new("RGBA", (256, 256), (15, 23, 42, 255))
+        if ImageDraw is not None:
+            d = ImageDraw.Draw(fallback)
+            d.rounded_rectangle((24, 24, 232, 232), radius=36, fill=(37, 99, 235, 255))
+        fallback.save(
+            ruta,
+            sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
+        )
