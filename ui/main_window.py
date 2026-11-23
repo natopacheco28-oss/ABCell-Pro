@@ -2,15 +2,25 @@ import os
 import webbrowser
 from datetime import datetime
 from PySide6.QtCore import QPointF, Qt, Signal
-from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
+from PySide6.QtGui import (
+    QColor,
+    QIcon,
+    QKeySequence,
+    QPainter,
+    QPen,
+    QPixmap,
+    QShortcut,
+)
 from PySide6.QtWidgets import (
     QComboBox,
+    QDialog,
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QFrame,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMainWindow,
@@ -35,6 +45,12 @@ from integrations.printer_58mm import (
     logo_pil,
 )
 from ui.theme import DARK_QSS, LIGHT_QSS
+
+ESTILO_BOTON_PELIGRO = (
+    "QPushButton{background:#dc2626;color:white;font-weight:600;"
+    "border-radius:8px;padding:8px 14px;border:none;}"
+    "QPushButton:hover{background:#b91c1c;}"
+)
 
 GARANTIA_EJEMPLO = (
     "Garantia de 30 dias en la reparacion y en la refaccion instalada, "
@@ -384,6 +400,9 @@ class MainWindow(QMainWindow):
         self.nav_buttons: list[QPushButton] = []
         self.stage_buttons: list[QPushButton] = []
         self.etapa_filtro: str = "Todas"
+
+        self.atajo_modo_maestro = QShortcut(QKeySequence("Ctrl+P"), self)
+        self.atajo_modo_maestro.activated.connect(self._abrir_modo_maestro)
 
         nombre_negocio = self.config.get("identidad", "nombre_establecimiento", "ABCell")
         self.setWindowTitle(f"{nombre_negocio} — Taller")
@@ -790,6 +809,12 @@ class MainWindow(QMainWindow):
         btn_wa.setMinimumWidth(120)
         btn_wa.clicked.connect(self._enviar_wa_orden_sel)
         f2.addWidget(btn_wa)
+
+        btn_eliminar = QPushButton("Eliminar orden")
+        btn_eliminar.setMinimumWidth(130)
+        btn_eliminar.setStyleSheet(ESTILO_BOTON_PELIGRO)
+        btn_eliminar.clicked.connect(self._eliminar_orden_sel)
+        f2.addWidget(btn_eliminar)
 
         pa_lay.addLayout(f2)
         lay.addWidget(panel_accion)
@@ -1231,6 +1256,55 @@ class MainWindow(QMainWindow):
                 self, "Ticket 58mm", f"{msg}\n\nVista previa:\n{generar_texto_ticket(o, self.config)}"
             )
 
+    def _autorizar_con_codigo(self, accion: str, obligatorio: bool = False) -> bool:
+        if not self.config.tiene_codigo_maestro():
+            if obligatorio:
+                QMessageBox.information(
+                    self,
+                    "Código maestro",
+                    "Primero define un código maestro con Ctrl+P.",
+                )
+                return False
+            return True
+        codigo, ok = QInputDialog.getText(
+            self,
+            "Código maestro",
+            f"Escribe el código maestro para {accion}:",
+            QLineEdit.EchoMode.Password,
+        )
+        if not ok:
+            return False
+        if not self.config.verificar_codigo_maestro(codigo):
+            QMessageBox.warning(self, "Código incorrecto", "El código maestro no es correcto.")
+            return False
+        return True
+
+    def _eliminar_orden_sel(self):
+        folio = self._folio_seleccionado()
+        if not folio:
+            QMessageBox.information(self, "Selecciona orden", "Selecciona una orden de la tabla.")
+            return
+        o = self.service.obtener_orden(folio)
+        if not o:
+            return
+        si_no = QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        resp = QMessageBox.question(
+            self,
+            "Eliminar orden",
+            f"¿Eliminar la orden #{folio:04d} de {o.get('cliente_nombre', '')}?\n\n"
+            "También se borrarán sus pagos. Esta acción no se puede deshacer.",
+            si_no,
+            QMessageBox.StandardButton.No,
+        )
+        if resp != QMessageBox.StandardButton.Yes:
+            return
+        if not self._autorizar_con_codigo(f"eliminar la orden #{folio:04d}"):
+            return
+        self.service.eliminar_orden(folio)
+        self.lbl_folio_sel.setText("Selecciona una orden")
+        self.refrescar_todo()
+        QMessageBox.information(self, "Orden eliminada", f"Se eliminó la orden #{folio:04d}.")
+
     def _enviar_wa_orden_sel(self):
         folio = self._folio_seleccionado()
         if not folio:
@@ -1588,6 +1662,19 @@ class MainWindow(QMainWindow):
 
         lay.addWidget(card)
 
+        card_seg = QFrame()
+        card_seg.setObjectName("Card")
+        seg_lay = QVBoxLayout(card_seg)
+        seg_lay.setContentsMargins(18, 14, 18, 14)
+        lbl_seg = QLabel(
+            "Modo maestro: presiona Ctrl+P en cualquier pantalla para entrar "
+            "con tu código maestro."
+        )
+        lbl_seg.setObjectName("CardSub")
+        lbl_seg.setWordWrap(True)
+        seg_lay.addWidget(lbl_seg)
+        lay.addWidget(card_seg)
+
         btn_save = QPushButton("Guardar Configuración")
         btn_save.setObjectName("PrimaryBtn")
         btn_save.setMinimumWidth(185)
@@ -1595,6 +1682,142 @@ class MainWindow(QMainWindow):
         lay.addWidget(btn_save, alignment=Qt.AlignRight)
         lay.addStretch()
         return w
+
+    def _definir_codigo_maestro(self, autorizado: bool = False):
+        if self.config.tiene_codigo_maestro() and not autorizado:
+            if not self._autorizar_con_codigo("cambiar el código maestro"):
+                return
+        nuevo, ok = QInputDialog.getText(
+            self,
+            "Nuevo código maestro",
+            "Escribe el nuevo código (mínimo 4 caracteres):",
+            QLineEdit.EchoMode.Password,
+        )
+        if not ok:
+            return
+        nuevo = nuevo.strip()
+        if len(nuevo) < 4:
+            QMessageBox.warning(self, "Código muy corto", "Usa al menos 4 caracteres.")
+            return
+        repetido, ok = QInputDialog.getText(
+            self, "Repite el código", "Escribe el código otra vez:", QLineEdit.EchoMode.Password
+        )
+        if not ok or repetido.strip() != nuevo:
+            QMessageBox.warning(self, "No coinciden", "Los códigos no coinciden. No se cambió nada.")
+            return
+        self.config.definir_codigo_maestro(nuevo)
+        self.config.save()
+        QMessageBox.information(self, "Código maestro", "El código maestro quedó guardado.")
+
+    def _abrir_modo_maestro(self):
+        if not self.config.tiene_codigo_maestro():
+            QMessageBox.information(
+                self,
+                "Modo maestro",
+                "Todavía no hay un código maestro. Crea uno ahora.",
+            )
+            self._definir_codigo_maestro(autorizado=True)
+            if not self.config.tiene_codigo_maestro():
+                return
+        elif not self._autorizar_con_codigo("entrar al modo maestro"):
+            return
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Modo maestro")
+        dlg.setMinimumWidth(440)
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(22, 18, 22, 18)
+        lay.setSpacing(10)
+
+        titulo = QLabel("Modo maestro")
+        titulo.setObjectName("Title")
+        ayuda = QLabel(
+            "Acciones protegidas. Antes de borrar se crea un respaldo "
+            "automático en la carpeta 'respaldos'."
+        )
+        ayuda.setObjectName("CardSub")
+        ayuda.setWordWrap(True)
+
+        btn_ordenes = QPushButton("Borrar todas las órdenes")
+        btn_ordenes.setStyleSheet(ESTILO_BOTON_PELIGRO)
+        btn_ordenes.clicked.connect(
+            lambda _=False: self._borrar_todas_las_ordenes(autorizado=True)
+        )
+        btn_base = QPushButton("Restablecer base de datos completa")
+        btn_base.setStyleSheet(ESTILO_BOTON_PELIGRO)
+        btn_base.clicked.connect(
+            lambda _=False: self._restablecer_base_completa(autorizado=True)
+        )
+        btn_codigo = QPushButton("Cambiar código maestro")
+        btn_codigo.clicked.connect(
+            lambda _=False: self._definir_codigo_maestro(autorizado=True)
+        )
+        btn_cerrar = QPushButton("Cerrar")
+        btn_cerrar.clicked.connect(dlg.accept)
+
+        for widget in (titulo, ayuda, btn_ordenes, btn_base, btn_codigo, btn_cerrar):
+            lay.addWidget(widget)
+        dlg.exec()
+
+    def _confirmar_borrado(self, titulo: str, texto: str) -> bool:
+        si_no = QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        resp = QMessageBox.question(
+            self, titulo, texto, si_no, QMessageBox.StandardButton.No
+        )
+        return resp == QMessageBox.StandardButton.Yes
+
+    def _borrar_todas_las_ordenes(self, autorizado: bool = False):
+        if not autorizado and not self._autorizar_con_codigo(
+            "borrar todas las órdenes", obligatorio=True
+        ):
+            return
+        total = len(self.service.listar_ordenes())
+        if not self._confirmar_borrado(
+            "Borrar todas las órdenes",
+            f"Se borrarán las {total} órdenes con sus pagos y avisos, y los folios "
+            "volverán a empezar en 1.\n\nEl catálogo de servicios y las ubicaciones "
+            "se conservan. Se hará un respaldo antes.\n\n¿Continuar?",
+        ):
+            return
+        try:
+            respaldo = self.db.respaldar()
+        except Exception as exc:
+            QMessageBox.critical(
+                self, "Sin respaldo", f"No se pudo crear el respaldo, no se borró nada:\n{exc}"
+            )
+            return
+        self.db.restablecer_ordenes()
+        self.lbl_folio_sel.setText("Selecciona una orden")
+        self.refrescar_todo()
+        QMessageBox.information(
+            self, "Órdenes borradas", f"Listo. Respaldo guardado en:\n{respaldo}"
+        )
+
+    def _restablecer_base_completa(self, autorizado: bool = False):
+        if not autorizado and not self._autorizar_con_codigo(
+            "restablecer la base de datos", obligatorio=True
+        ):
+            return
+        if not self._confirmar_borrado(
+            "Restablecer base de datos",
+            "Se borrarán TODAS las órdenes, el catálogo de servicios con tus precios "
+            "y las ubicaciones. Quedarán solo los datos de ejemplo iniciales.\n\n"
+            "Se hará un respaldo antes.\n\n¿Seguro que quieres continuar?",
+        ):
+            return
+        try:
+            respaldo = self.db.respaldar()
+        except Exception as exc:
+            QMessageBox.critical(
+                self, "Sin respaldo", f"No se pudo crear el respaldo, no se borró nada:\n{exc}"
+            )
+            return
+        self.db.restablecer_todo()
+        self.lbl_folio_sel.setText("Selecciona una orden")
+        self.refrescar_todo()
+        QMessageBox.information(
+            self, "Base restablecida", f"Listo. Respaldo guardado en:\n{respaldo}"
+        )
 
     def _insertar_garantia_ejemplo(self):
         if self.cfg_garantia.toPlainText().strip():
