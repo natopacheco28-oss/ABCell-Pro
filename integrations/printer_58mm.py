@@ -183,7 +183,10 @@ def generar_texto_ticket(
         return "\n".join(l.center(ancho) for l in lineas)
 
     def envolver(texto: str) -> str:
-        return "\n".join(textwrap.wrap(texto, ancho))
+        salida = []
+        for linea in str(texto).splitlines() or [""]:
+            salida.extend(textwrap.wrap(linea, ancho) or [""])
+        return "\n".join(salida)
 
     ticket = []
     if incluir_nombre:
@@ -199,7 +202,8 @@ def generar_texto_ticket(
 
     ticket.append(doble_sep)
     ticket.append(f"FOLIO: #{int(orden['folio']):04d}")
-    ticket.append(f"FECHA: {orden.get('fecha', '')}")
+    fecha_txt = orden.get("fecha") or str(orden.get("fecha_ingreso") or "")[:16]
+    ticket.append(f"FECHA: {fecha_txt}")
     ticket.append(f"ESTATUS: {orden.get('estatus', 'Recibido')}")
     ticket.append(sep)
     ticket.append(f"CLIENTE: {orden.get('cliente_nombre', '')}")
