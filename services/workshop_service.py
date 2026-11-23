@@ -190,6 +190,20 @@ class WorkshopService:
         )
         return self.obtener_orden(folio)
 
+    def eliminar_orden(self, folio: int) -> bool:
+        folio = int(folio)
+        existe = self.db.consultar_uno(
+            "SELECT folio FROM ordenes WHERE folio = ?", (folio,)
+        )
+        if not existe:
+            return False
+        self.db.ejecutar("DELETE FROM pagos_orden WHERE folio = ?", (folio,))
+        self.db.ejecutar(
+            "DELETE FROM notificaciones_wa WHERE folio = ?", (folio,)
+        )
+        self.db.ejecutar("DELETE FROM ordenes WHERE folio = ?", (folio,))
+        return True
+
     def obtener_metricas_dashboard(self, categoria: str = "Todas") -> dict:
         ordenes = self.listar_ordenes(categoria=categoria)
         cerrados = {"Entregado", "Cancelado"}
