@@ -11,10 +11,7 @@ from database.db_manager import DatabaseManager
 
 def obtener_carpeta_datos() -> str:
     if getattr(sys, "frozen", False):
-        base = os.path.join(
-            os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
-            "ABCell_Gestion_Taller",
-        )
+        base = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "ABCell_Gestion_Taller")
     else:
         base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
     os.makedirs(base, exist_ok=True)
