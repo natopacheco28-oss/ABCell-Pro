@@ -3,8 +3,13 @@ import io
 import os
 import struct
 import textwrap
-from config.assets import LOGO_B64, LOGO_COLOR_B64
 from config.settings import ConfigManager
+
+try:
+    from config.assets import LOGO_B64, LOGO_COLOR_B64
+except Exception:
+    LOGO_B64 = ""
+    LOGO_COLOR_B64 = ""
 
 try:
     from PIL import Image, ImageDraw, ImageFont
@@ -219,7 +224,9 @@ def generar_texto_ticket(
 
 def imprimir_ticket_58mm(orden: dict, config: ConfigManager) -> tuple[bool, str]:
     nombre_impresora = config.get("notas", "impresora", "")
-    texto = generar_texto_ticket(orden, config, incluir_nombre=not config.get("notas", "mostrar_logo", True))
+    texto = generar_texto_ticket(
+        orden, config, incluir_nombre=not config.get("notas", "mostrar_logo", True)
+    )
 
     try:
         import win32print
@@ -247,4 +254,7 @@ def imprimir_ticket_58mm(orden: dict, config: ConfigManager) -> tuple[bool, str]
             win32print.ClosePrinter(hprinter)
         return True, f"Ticket enviado a {nombre_impresora}."
     except Exception as exc:
-        return False, f"No se pudo imprimir directo ({exc}). Puedes copiar o exportar el ticket."
+        return (
+            False,
+            f"No se pudo imprimir directo ({exc}). Puedes copiar o exportar el ticket.",
+        )
