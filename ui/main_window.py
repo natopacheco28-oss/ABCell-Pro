@@ -80,6 +80,84 @@ except Exception:
     ]
     METODOS_PAGO = ["Efectivo", "Transferencia", "Tarjeta", "Depósito"]
 
+try:
+    from services.workshop_service import WorkshopService
+except Exception:
+    class WorkshopService:  # type: ignore
+        def __init__(self, db, config):
+            self.db = db
+            self.config = config
+
+        def listar_ordenes(self, *args, **kwargs):
+            return []
+
+        def listar_clientes(self, *args, **kwargs):
+            return []
+
+        def listar_servicios(self, *args, **kwargs):
+            return []
+
+        def listar_ubicaciones(self, *args, **kwargs):
+            return []
+
+        def obtener_metricas_dashboard(self, *args, **kwargs):
+            return {
+                "activas": 0,
+                "por_entregar": 0,
+                "guardados_7": 0,
+                "anticipos_totales": 0.0,
+                "saldos_pendientes": 0.0,
+                "lista_por_entregar": [],
+                "actividad_reciente": [],
+            }
+
+        def generar_reporte_financiero(self, *args, **kwargs):
+            return {
+                "ingresos_diarios": 0.0,
+                "ingresos_mensuales": 0.0,
+                "saldos_pendientes": 0.0,
+                "ganancia_neta_mes": 0.0,
+                "por_categoria": {},
+            }
+
+        def crear_orden(self, datos):
+            return 1
+
+        def obtener_orden(self, folio):
+            return None
+
+        def registrar_pago(self, *args, **kwargs):
+            return None
+
+        def actualizar_orden_detalle(self, *args, **kwargs):
+            return None
+
+        def guardar_servicio(self, *args, **kwargs):
+            return 1
+
+        def guardar_ubicacion(self, *args, **kwargs):
+            return None
+
+try:
+    from integrations.whatsapp_center import WhatsAppCenter
+except Exception:
+    class WhatsAppCenter:  # type: ignore
+        def __init__(self, db, config):
+            self.db = db
+            self.config = config
+
+        def construir_mensaje(self, tipo, orden):
+            return ""
+
+        def generar_url_wa(self, telefono, mensaje):
+            return "https://wa.me/"
+
+        def registrar_notificacion(self, *args, **kwargs):
+            return None
+
+        def listar_notificaciones(self, *args, **kwargs):
+            return []
+
 
 class PatronCanvasWidget(QWidget):
     """Cuadrícula interactiva de 3x3 puntos para dibujar el patrón de desbloqueo a mano."""
@@ -174,14 +252,12 @@ class PatronCanvasWidget(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
-        # Fondo del lienzo
         painter.setPen(QPen(QColor("#cbd5e1"), 1.5))
         painter.setBrush(QColor("#f8fafc"))
         painter.drawRoundedRect(self.rect().adjusted(1, 1, -1, -1), 12, 12)
 
         mapa = {num: pt for num, pt in self.puntos}
 
-        # Líneas conectando la secuencia
         if len(self.secuencia) >= 2:
             pen_linea = QPen(QColor("#0284c7"), 4, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
             painter.setPen(pen_linea)
@@ -190,13 +266,11 @@ class PatronCanvasWidget(QWidget):
                 p2 = mapa[self.secuencia[i + 1]]
                 painter.drawLine(p1, p2)
 
-        # Línea temporal hacia el cursor mientras dibuja
         if self.dibujando and self.secuencia and self.pos_actual is not None:
             ultimo_pt = mapa[self.secuencia[-1]]
             painter.setPen(QPen(QColor("#38bdf8"), 2.5, Qt.DashLine, Qt.RoundCap))
             painter.drawLine(ultimo_pt, self.pos_actual)
 
-        # Dibujar los 9 puntos
         for num, pt in self.puntos:
             seleccionado = num in self.secuencia
             if seleccionado:
@@ -314,13 +388,18 @@ class MainWindow(QMainWindow):
     def _obtener_pixmap_abcell(self) -> QPixmap | None:
         pil_img = logo_color_pil(self.config) or logo_pil(self.config)
         if pil_img is not None:
-            tmp_path = os.path.join(os.path.dirname(os.path.abspath(self.db.db_path)), "_tmp_logo_ui.png")
+            tmp_path = os.path.join(
+                os.path.dirname(os.path.abspath(self.db.db_path)), "_tmp_logo_ui.png"
+            )
             pil_img.save(tmp_path)
             pm = QPixmap(tmp_path)
             if not pm.isNull():
                 return pm
 
-        for candidato in ("logo.ico", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "logo.ico")):
+        for candidato in (
+            "logo.ico",
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "logo.ico"),
+        ):
             if os.path.exists(candidato):
                 pm = QPixmap(candidato)
                 if not pm.isNull():
@@ -359,7 +438,6 @@ class MainWindow(QMainWindow):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        # Barra superior
         topbar = QFrame()
         topbar.setObjectName("TopBar")
         topbar.setFixedHeight(52)
@@ -402,7 +480,6 @@ class MainWindow(QMainWindow):
         body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(0)
 
-        # Barra lateral
         sidebar = QFrame()
         sidebar.setObjectName("Sidebar")
         sidebar.setFixedWidth(225)
@@ -695,7 +772,7 @@ class MainWindow(QMainWindow):
         self.refrescar_ordenes()
 
     # ------------------------------------------
-    # 1. NUEVA ORDEN (SUBCATEGORÍAS + PATRÓN DIBUJABLE)
+    # 1. NUEVA ORDEN
     # ------------------------------------------
     def _build_nueva_orden_tab(self) -> QWidget:
         scroll = QScrollArea()
@@ -739,7 +816,6 @@ class MainWindow(QMainWindow):
         self.no_pin = QLineEdit()
         self.no_pin.setPlaceholderText("PIN o contraseña escrita")
 
-        # Lienzo manual para dibujar el patrón
         patron_box = QFrame()
         patron_box.setObjectName("SubBar")
         pb_lay = QHBoxLayout(patron_box)
@@ -1413,77 +1489,4 @@ class MainWindow(QMainWindow):
         form.setSpacing(10)
         form.setContentsMargins(18, 18, 18, 18)
 
-        self.cfg_nombre = QLineEdit(
-            self.config.get("identidad", "nombre_establecimiento", "ABCell")
-        )
-        self.cfg_tel = QLineEdit(self.config.get("contacto", "telefono", ""))
-        self.cfg_dir = QLineEdit(self.config.get("contacto", "direccion", ""))
-        self.cfg_impresora = QLineEdit(self.config.get("notas", "impresora", ""))
-        self.cfg_tema = QComboBox()
-        self.cfg_tema.addItems(["Claro", "Oscuro"])
-        self.cfg_tema.setCurrentText("Claro" if self._es_tema_claro() else "Oscuro")
-        self.cfg_tema.currentTextChanged.connect(self._cambiar_tema_desde_combo)
-
-        row_logo = QHBoxLayout()
-        self.cfg_logo = QLineEdit(self.config.get("identidad", "logo_personalizado", ""))
-        btn_logo = QPushButton("Elegir logo")
-        btn_logo.clicked.connect(self._elegir_logo)
-        row_logo.addWidget(self.cfg_logo)
-        row_logo.addWidget(btn_logo)
-
-        form.addRow("Nombre del negocio:", self.cfg_nombre)
-        form.addRow("Teléfono / WhatsApp:", self.cfg_tel)
-        form.addRow("Dirección:", self.cfg_dir)
-        form.addRow("Impresora 58mm:", self.cfg_impresora)
-        form.addRow("Tema visual (Claro / Oscuro):", self.cfg_tema)
-        form.addRow("Logo personalizado:", row_logo)
-
-        lay.addWidget(card)
-
-        btn_save = QPushButton("Guardar Configuración")
-        btn_save.setObjectName("PrimaryBtn")
-        btn_save.setMinimumWidth(185)
-        btn_save.clicked.connect(self._guardar_config)
-        lay.addWidget(btn_save, alignment=Qt.AlignRight)
-        lay.addStretch()
-        return w
-
-    def _cambiar_tema_desde_combo(self, nuevo_tema: str):
-        self.config.set("apariencia", "tema", nuevo_tema)
-        self.config.save()
-        self.aplicar_tema()
-
-    def _elegir_logo(self):
-        ruta, _ = QFileDialog.getOpenFileName(
-            self, "Seleccionar logo", "", "Imágenes (*.png *.jpg *.jpeg *.webp)"
-        )
-        if ruta:
-            self.cfg_logo.setText(ruta)
-
-    def _guardar_config(self):
-        self.config.set("identidad", "nombre_establecimiento", self.cfg_nombre.text().strip())
-        self.config.set("notas", "nombre_comercial", self.cfg_nombre.text().strip())
-        self.config.set("contacto", "telefono", self.cfg_tel.text().strip())
-        self.config.set("notas", "telefono", self.cfg_tel.text().strip())
-        self.config.set("contacto", "direccion", self.cfg_dir.text().strip())
-        self.config.set("notas", "direccion", self.cfg_dir.text().strip())
-        self.config.set("notas", "impresora", self.cfg_impresora.text().strip())
-        self.config.set("apariencia", "tema", self.cfg_tema.currentText())
-        self.config.set("identidad", "logo_personalizado", self.cfg_logo.text().strip())
-        self.config.save()
-
-        self._aplicar_icono_abcell()
-        self.aplicar_tema()
-        self.lbl_brand_sidebar.setText(self.cfg_nombre.text().strip() or "ABCell")
-        self._cargar_logo_widget(self.lbl_logo_sidebar, 38)
-        self._cargar_logo_widget(self.lbl_topbar_logo, 26)
-        QMessageBox.information(self, "Guardado", "La configuración se guardó correctamente.")
-        self.refrescar_todo()
-
-    def refrescar_todo(self):
-        self._cargar_combos_orden()
-        self.refrescar_ordenes()
-        self.refrescar_clientes()
-        self.refrescar_catalogo_ubicaciones()
-        self.refrescar_reportes()
-        self.refrescar_wa()
+        self
