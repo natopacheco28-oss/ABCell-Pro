@@ -1,0 +1,31 @@
+name: Compilar ABCell Pro .exe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python -c "from integrations.printer_58mm import guardar_ico; guardar_ico('logo.ico')"
+      - run: >
+          pyinstaller --onefile --noconsole --icon logo.ico
+          --name ABCell_Gestion_Taller
+          --add-data "config;config"
+          --add-data "core;core"
+          --add-data "database;database"
+          --add-data "services;services"
+          --add-data "integrations;integrations"
+          --add-data "ui;ui"
+          main.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ABCell_Gestion_Taller_exe
+          path: dist/ABCell_Gestion_Taller.exe
