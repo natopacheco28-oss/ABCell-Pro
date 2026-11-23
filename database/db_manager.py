@@ -92,6 +92,10 @@ class DatabaseManager:
         "metodo_pago": "TEXT DEFAULT 'Efectivo'",
     }
 
+    COLUMNAS_WA = {
+        "estado": "TEXT DEFAULT 'Abierto en WA'",
+    }
+
     def _migrar_ordenes(self):
         """Repara bases de datos antiguas para que se puedan guardar órdenes."""
         cols = self._columnas_tabla("ordenes")
@@ -140,6 +144,7 @@ class DatabaseManager:
 
     def _migrar_columnas(self):
         self._migrar_ordenes()
+        self._agregar_columnas("notificaciones_wa", self.COLUMNAS_WA)
         cols_ub = self._columnas_tabla("ubicaciones")
         if cols_ub and "activo" not in cols_ub:
             self.ejecutar(
@@ -241,6 +246,7 @@ class DatabaseManager:
                 telefono TEXT DEFAULT '',
                 tipo TEXT DEFAULT '',
                 mensaje TEXT DEFAULT '',
+                estado TEXT DEFAULT 'Abierto en WA',
                 fecha TEXT NOT NULL
             )
             """
@@ -287,6 +293,42 @@ class DatabaseManager:
                     """,
                     (cat, marca, modelo, nombre, precio),
                 )
+
+    def respaldar(self) -> str:
+        """Guarda una copia de la base en la carpeta 'respaldos'."""
+        carpeta = os.path.join(
+            os.path.dirname(os.path.abspath(self.db_path)), "respaldos"
+        )
+        os.makedirs(carpeta, exist_ok=True)
+        marca = datetime.now().strftime("%Y%m%d_%H%M%S")
+        destino = os.path.join(carpeta, f"abcell_taller_{marca}.db")
+        self.connect().commit()
+        copia = sqlite3.connect(destino)
+        try:
+            self.conn.backup(copia)
+        finally:
+            copia.close()
+        return destino
+
+    def restablecer_ordenes(self):
+        """Borra todas las órdenes, pagos y avisos. Folios vuelven a 1."""
+        for tabla in ("pagos_orden", "notificaciones_wa", "ordenes"):
+            self.ejecutar(f"DELETE FROM {tabla}")
+        self.ejecutar(
+            "DELETE FROM sqlite_sequence WHERE name IN "
+            "('ordenes', 'pagos_orden', 'notificaciones_wa')"
+        )
+
+    def restablecer_todo(self):
+        """Borra órdenes, catálogo y ubicaciones; vuelve a los datos base."""
+        self.restablecer_ordenes()
+        self.ejecutar("DELETE FROM servicios_catalogo")
+        self.ejecutar("DELETE FROM ubicaciones")
+        self.ejecutar(
+            "DELETE FROM sqlite_sequence WHERE name IN "
+            "('servicios_catalogo', 'ubicaciones')"
+        )
+        self._sembrar_datos_iniciales()
 
     def cerrar(self):
         try:
