@@ -1197,7 +1197,6 @@ class MainWindow(QMainWindow):
             return
         o = self.service.obtener_orden(folio)
         if not o:
-            QMessageBox.warning(self, "No encontrada", f"No se encontró la orden #{folio:04d}.")
             return
         ok, msg = imprimir_ticket_58mm(o, self.config)
         if ok:
@@ -1555,4 +1554,35 @@ class MainWindow(QMainWindow):
 
     def _elegir_logo(self):
         ruta, _ = QFileDialog.getOpenFileName(
-            self, "Seleccionar logo", "",
+            self, "Seleccionar logo", "", "Imágenes (*.png *.jpg *.jpeg *.webp)"
+        )
+        if ruta:
+            self.cfg_logo.setText(ruta)
+
+    def _guardar_config(self):
+        self.config.set("identidad", "nombre_establecimiento", self.cfg_nombre.text().strip())
+        self.config.set("notas", "nombre_comercial", self.cfg_nombre.text().strip())
+        self.config.set("contacto", "telefono", self.cfg_tel.text().strip())
+        self.config.set("notas", "telefono", self.cfg_tel.text().strip())
+        self.config.set("contacto", "direccion", self.cfg_dir.text().strip())
+        self.config.set("notas", "direccion", self.cfg_dir.text().strip())
+        self.config.set("notas", "impresora", self.cfg_impresora.text().strip())
+        self.config.set("apariencia", "tema", self.cfg_tema.currentText())
+        self.config.set("identidad", "logo_personalizado", self.cfg_logo.text().strip())
+        self.config.save()
+
+        self._aplicar_icono_abcell()
+        self.aplicar_tema()
+        self.lbl_brand_sidebar.setText(self.cfg_nombre.text().strip() or "ABCell")
+        self._cargar_logo_widget(self.lbl_logo_sidebar, 38)
+        self._cargar_logo_widget(self.lbl_topbar_logo, 26)
+        QMessageBox.information(self, "Guardado", "La configuración se guardó correctamente.")
+        self.refrescar_todo()
+
+    def refrescar_todo(self):
+        self._cargar_combos_orden()
+        self.refrescar_ordenes()
+        self.refrescar_clientes()
+        self.refrescar_catalogo_ubicaciones()
+        self.refrescar_reportes()
+        self.refrescar_wa()
