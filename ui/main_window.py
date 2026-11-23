@@ -36,6 +36,16 @@ from integrations.printer_58mm import (
 )
 from ui.theme import DARK_QSS, LIGHT_QSS
 
+GARANTIA_EJEMPLO = (
+    "Garantia de 30 dias en la reparacion y en la refaccion instalada, "
+    "contados desde la fecha de entrega.\n"
+    "La garantia no cubre golpes, caidas, humedad, pantalla estrellada, "
+    "sellos rotos o equipos revisados por otro taller.\n"
+    "Para hacer valida la garantia es necesario presentar esta nota.\n"
+    "Equipos no recogidos despues de 30 dias del aviso no generan "
+    "responsabilidad para el taller."
+)
+
 try:
     from core.catalog_data import (
         CATEGORIAS_EQUIPO,
@@ -1552,6 +1562,30 @@ class MainWindow(QMainWindow):
         form.addRow("Tema visual (Claro / Oscuro):", self.cfg_tema)
         form.addRow("Logo personalizado:", row_logo)
 
+        self.cfg_garantia = QPlainTextEdit()
+        self.cfg_garantia.setPlainText(
+            str(self.config.get("notas", "politicas_garantia", "") or "")
+        )
+        self.cfg_garantia.setMinimumHeight(150)
+        self.cfg_garantia.setPlaceholderText(
+            "Escribe aqui las politicas de garantia que se imprimen en la nota..."
+        )
+        lbl_garantia_ayuda = QLabel(
+            "Se imprime al final de cada nota. Cada renglon se ajusta al "
+            "ancho del ticket. Si lo dejas vacio, no se imprime."
+        )
+        lbl_garantia_ayuda.setObjectName("CardSub")
+        lbl_garantia_ayuda.setWordWrap(True)
+        btn_garantia_ejemplo = QPushButton("Insertar texto de ejemplo")
+        btn_garantia_ejemplo.clicked.connect(self._insertar_garantia_ejemplo)
+
+        box_garantia = QVBoxLayout()
+        box_garantia.setSpacing(6)
+        box_garantia.addWidget(self.cfg_garantia)
+        box_garantia.addWidget(lbl_garantia_ayuda)
+        box_garantia.addWidget(btn_garantia_ejemplo, alignment=Qt.AlignLeft)
+        form.addRow("Políticas de garantía:", box_garantia)
+
         lay.addWidget(card)
 
         btn_save = QPushButton("Guardar Configuración")
@@ -1561,6 +1595,17 @@ class MainWindow(QMainWindow):
         lay.addWidget(btn_save, alignment=Qt.AlignRight)
         lay.addStretch()
         return w
+
+    def _insertar_garantia_ejemplo(self):
+        if self.cfg_garantia.toPlainText().strip():
+            resp = QMessageBox.question(
+                self,
+                "Reemplazar texto",
+                "Ya hay texto escrito. ¿Reemplazarlo con el ejemplo?",
+            )
+            if resp != QMessageBox.StandardButton.Yes:
+                return
+        self.cfg_garantia.setPlainText(GARANTIA_EJEMPLO)
 
     def _cambiar_tema_desde_combo(self, nuevo_tema: str):
         self.config.set("apariencia", "tema", nuevo_tema)
@@ -1584,6 +1629,9 @@ class MainWindow(QMainWindow):
         self.config.set("notas", "impresora", self.cfg_impresora.text().strip())
         self.config.set("apariencia", "tema", self.cfg_tema.currentText())
         self.config.set("identidad", "logo_personalizado", self.cfg_logo.text().strip())
+        self.config.set(
+            "notas", "politicas_garantia", self.cfg_garantia.toPlainText().strip()
+        )
         self.config.save()
 
         self._aplicar_icono_abcell()
