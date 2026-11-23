@@ -25,12 +25,40 @@ from PySide6.QtWidgets import (
 )
 
 from config.settings import ConfigManager
-from core.catalog_data import CATEGORIAS_EQUIPO, ESTATUS_ORDEN, METODOS_PAGO, PATRONES_SUGERIDOS
 from database.db_manager import DatabaseManager
 from integrations.printer_58mm import generar_texto_ticket, imprimir_ticket_58mm, logo_color_pil
 from integrations.whatsapp_center import WhatsAppCenter
 from services.workshop_service import WorkshopService
 from ui.theme import DARK_QSS, LIGHT_QSS
+
+try:
+    from core.catalog_data import (
+        CATEGORIAS_EQUIPO,
+        ESTATUS_ORDEN,
+        METODOS_PAGO,
+        PATRONES_SUGERIDOS,
+    )
+except Exception:
+    CATEGORIAS_EQUIPO = [
+        "Celulares",
+        "Tablets",
+        "Laptops",
+        "Smartwatches",
+        "Consolas",
+        "Accesorios",
+        "Otros",
+    ]
+    ESTATUS_ORDEN = [
+        "Recibido",
+        "En diagnóstico",
+        "Esperando refacción",
+        "En reparación",
+        "Listo para entregar",
+        "Entregado",
+        "Cancelado",
+    ]
+    METODOS_PAGO = ["Efectivo", "Transferencia", "Tarjeta", "Depósito"]
+    PATRONES_SUGERIDOS = ["Sin patrón", "Patrón en L", "Patrón en Z"]
 
 
 def _make_card(titulo: str, valor: str = "", subtitulo: str = "") -> tuple[QFrame, QLabel, QLabel]:
@@ -366,7 +394,10 @@ class MainWindow(QMainWindow):
         self.no_servicio_cat.clear()
         self.no_servicio_cat.addItem("-- Seleccionar servicio del catálogo --", None)
         for s in servicios:
-            desc = f"[{s['categoria']}] {s['nombre']} ({s.get('marca','')} {s.get('modelo','')}) - ${float(s['precio']):,.2f}"
+            desc = (
+                f"[{s['categoria']}] {s['nombre']} "
+                f"({s.get('marca', '')} {s.get('modelo', '')}) - ${float(s['precio']):,.2f}"
+            )
             self.no_servicio_cat.addItem(desc, s)
         self.no_servicio_cat.blockSignals(False)
 
@@ -398,7 +429,17 @@ class MainWindow(QMainWindow):
         self.lbl_no_saldo.setText(f"{simbolo}{saldo:,.2f}")
 
     def _limpiar_nueva_orden(self):
-        for campo in (self.no_cliente, self.no_tel, self.no_marca, self.no_modelo, self.no_color, self.no_imei, self.no_pin, self.no_estado_fisico, self.no_falla):
+        for campo in (
+            self.no_cliente,
+            self.no_tel,
+            self.no_marca,
+            self.no_modelo,
+            self.no_color,
+            self.no_imei,
+            self.no_pin,
+            self.no_estado_fisico,
+            self.no_falla,
+        ):
             campo.clear()
         self.no_notas.clear()
         self.no_costo_rep.setValue(0)
@@ -407,8 +448,16 @@ class MainWindow(QMainWindow):
         self.no_servicio_cat.setCurrentIndex(0)
 
     def _guardar_nueva_orden(self):
-        if not self.no_cliente.text().strip() or not self.no_tel.text().strip() or not self.no_marca.text().strip() or not self.no_modelo.text().strip() or not self.no_falla.text().strip():
-            QMessageBox.warning(self, "Campos requeridos", "Completa cliente, teléfono, marca, modelo y falla.")
+        if (
+            not self.no_cliente.text().strip()
+            or not self.no_tel.text().strip()
+            or not self.no_marca.text().strip()
+            or not self.no_modelo.text().strip()
+            or not self.no_falla.text().strip()
+        ):
+            QMessageBox.warning(
+                self, "Campos requeridos", "Completa cliente, teléfono, marca, modelo y falla."
+            )
             return
 
         s_cat = self.no_servicio_cat.currentData()
@@ -452,7 +501,9 @@ class MainWindow(QMainWindow):
 
         filtros = QHBoxLayout()
         self.txt_buscar_orden = QLineEdit()
-        self.txt_buscar_orden.setPlaceholderText("Buscar por folio, cliente, teléfono, marca, modelo o ubicación...")
+        self.txt_buscar_orden.setPlaceholderText(
+            "Buscar por folio, cliente, teléfono, marca, modelo o ubicación..."
+        )
         self.txt_buscar_orden.textChanged.connect(self.refrescar_ordenes)
 
         self.cmb_filtro_estatus = QComboBox()
@@ -469,7 +520,9 @@ class MainWindow(QMainWindow):
         lay.addLayout(filtros)
 
         self.tbl_ordenes = QTableWidget(0, 8)
-        self.tbl_ordenes.setHorizontalHeaderLabels(["Folio", "Cliente", "Equipo", "Falla", "Estatus", "Ubicación", "Total", "Saldo"])
+        self.tbl_ordenes.setHorizontalHeaderLabels(
+            ["Folio", "Cliente", "Equipo", "Falla", "Estatus", "Ubicación", "Total", "Saldo"]
+        )
         self.tbl_ordenes.setAlternatingRowColors(True)
         self.tbl_ordenes.setSelectionBehavior(QTableWidget.SelectRows)
         self.tbl_ordenes.itemSelectionChanged.connect(self._cargar_orden_seleccionada)
@@ -618,7 +671,9 @@ class MainWindow(QMainWindow):
         if ok:
             QMessageBox.information(self, "Impresión", msg)
         else:
-            QMessageBox.warning(self, "Ticket 58mm", f"{msg}\n\nVista previa:\n{generar_texto_ticket(o, self.config)}")
+            QMessageBox.warning(
+                self, "Ticket 58mm", f"{msg}\n\nVista previa:\n{generar_texto_ticket(o, self.config)}"
+            )
 
     def _enviar_wa_orden_sel(self):
         folio = self._folio_seleccionado()
@@ -630,7 +685,9 @@ class MainWindow(QMainWindow):
         tipo = "listo" if o.get("estatus") == "Listo para entregar" else "recibido"
         msg = self.wa.construir_mensaje(tipo, o)
         url = self.wa.generar_url_wa(o.get("cliente_tel", ""), msg)
-        self.wa.registrar_notificacion(folio, o.get("cliente_nombre", ""), o.get("cliente_tel", ""), tipo, msg)
+        self.wa.registrar_notificacion(
+            folio, o.get("cliente_nombre", ""), o.get("cliente_tel", ""), tipo, msg
+        )
         webbrowser.open(url)
 
     # ------------------------------------------
@@ -652,7 +709,9 @@ class MainWindow(QMainWindow):
         lay.addWidget(self.txt_buscar_cli)
 
         self.tbl_clientes = QTableWidget(0, 6)
-        self.tbl_clientes.setHorizontalHeaderLabels(["ID", "Nombre", "Teléfono", "Órdenes", "Total Facturado", "Saldo Pendiente"])
+        self.tbl_clientes.setHorizontalHeaderLabels(
+            ["ID", "Nombre", "Teléfono", "Órdenes", "Total Facturado", "Saldo Pendiente"]
+        )
         self.tbl_clientes.setAlternatingRowColors(True)
         lay.addWidget(self.tbl_clientes, 1)
         return w
@@ -713,7 +772,9 @@ class MainWindow(QMainWindow):
         l_serv.addLayout(row_s)
 
         self.tbl_servicios = QTableWidget(0, 5)
-        self.tbl_servicios.setHorizontalHeaderLabels(["ID", "Categoría", "Marca / Modelo", "Servicio", "Precio"])
+        self.tbl_servicios.setHorizontalHeaderLabels(
+            ["ID", "Categoría", "Marca / Modelo", "Servicio", "Precio"]
+        )
         self.tbl_servicios.setAlternatingRowColors(True)
         l_serv.addWidget(self.tbl_servicios, 1)
 
@@ -746,14 +807,16 @@ class MainWindow(QMainWindow):
     def _agregar_servicio(self):
         if not self.s_nombre.text().strip():
             return
-        self.service.guardar_servicio({
-            "categoria": self.s_cat.currentText(),
-            "marca": self.s_marca.text(),
-            "modelo": self.s_modelo.text(),
-            "nombre": self.s_nombre.text(),
-            "precio": self.s_precio.value(),
-            "activo": True,
-        })
+        self.service.guardar_servicio(
+            {
+                "categoria": self.s_cat.currentText(),
+                "marca": self.s_marca.text(),
+                "modelo": self.s_modelo.text(),
+                "nombre": self.s_nombre.text(),
+                "precio": self.s_precio.value(),
+                "activo": True,
+            }
+        )
         self.s_nombre.clear()
         self.s_precio.setValue(0)
         self.refrescar_catalogo_ubicaciones()
@@ -761,7 +824,9 @@ class MainWindow(QMainWindow):
     def _agregar_ubicacion(self):
         if not self.u_nombre.text().strip():
             return
-        self.service.guardar_ubicacion(self.u_nombre.text(), self.u_tipo.text() or "General", self.u_desc.text())
+        self.service.guardar_ubicacion(
+            self.u_nombre.text(), self.u_tipo.text() or "General", self.u_desc.text()
+        )
         self.u_nombre.clear()
         self.u_desc.clear()
         self.refrescar_catalogo_ubicaciones()
@@ -774,8 +839,14 @@ class MainWindow(QMainWindow):
         self.tbl_servicios.setRowCount(0)
         for i, s in enumerate(servicios):
             self.tbl_servicios.insertRow(i)
-            eq = f"{s.get('marca','')} {s.get('modelo','')}".strip() or "General"
-            vals = [str(s["id"]), s.get("categoria", ""), eq, s.get("nombre", ""), f"{simbolo}{float(s.get('precio') or 0.0):,.2f}"]
+            eq = f"{s.get('marca', '')} {s.get('modelo', '')}".strip() or "General"
+            vals = [
+                str(s["id"]),
+                s.get("categoria", ""),
+                eq,
+                s.get("nombre", ""),
+                f"{simbolo}{float(s.get('precio') or 0.0):,.2f}",
+            ]
             for c, v in enumerate(vals):
                 self.tbl_servicios.setItem(i, c, QTableWidgetItem(v))
 
@@ -805,14 +876,18 @@ class MainWindow(QMainWindow):
         row = QHBoxLayout()
         c_dia, self.r_dia, _ = _make_card("Ingresos del Día", "$0.00")
         c_mes, self.r_mes, _ = _make_card("Ingresos del Mes", "$0.00")
-        c_gan, self.r_gan, _ = _make_card("Ganancia Neta (Mes)", "$0.00", "Total órdenes mes menos repuestos")
+        c_gan, self.r_gan, _ = _make_card(
+            "Ganancia Neta (Mes)", "$0.00", "Total órdenes mes menos repuestos"
+        )
         c_sal, self.r_sal, _ = _make_card("Saldos por Cobrar", "$0.00")
         for c in (c_dia, c_mes, c_gan, c_sal):
             row.addWidget(c)
         lay.addLayout(row)
 
         self.tbl_rep_cat = QTableWidget(0, 5)
-        self.tbl_rep_cat.setHorizontalHeaderLabels(["Categoría", "Órdenes", "Facturado", "Costo Repuestos", "Ganancia Estimada"])
+        self.tbl_rep_cat.setHorizontalHeaderLabels(
+            ["Categoría", "Órdenes", "Facturado", "Costo Repuestos", "Ganancia Estimada"]
+        )
         self.tbl_rep_cat.setAlternatingRowColors(True)
         lay.addWidget(self.tbl_rep_cat, 1)
         return w
@@ -894,7 +969,9 @@ class MainWindow(QMainWindow):
         card.setObjectName("Card")
         form = QFormLayout(card)
 
-        self.cfg_nombre = QLineEdit(self.config.get("identidad", "nombre_establecimiento", "ABCell Tizimin"))
+        self.cfg_nombre = QLineEdit(
+            self.config.get("identidad", "nombre_establecimiento", "ABCell Tizimin")
+        )
         self.cfg_tel = QLineEdit(self.config.get("contacto", "telefono", ""))
         self.cfg_dir = QLineEdit(self.config.get("contacto", "direccion", ""))
         self.cfg_impresora = QLineEdit(self.config.get("notas", "impresora", ""))
@@ -925,7 +1002,9 @@ class MainWindow(QMainWindow):
         return w
 
     def _elegir_logo(self):
-        ruta, _ = QFileDialog.getOpenFileName(self, "Seleccionar logo", "", "Imágenes (*.png *.jpg *.jpeg *.webp)")
+        ruta, _ = QFileDialog.getOpenFileName(
+            self, "Seleccionar logo", "", "Imágenes (*.png *.jpg *.jpeg *.webp)"
+        )
         if ruta:
             self.cfg_logo.setText(ruta)
 
