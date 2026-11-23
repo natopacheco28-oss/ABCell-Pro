@@ -10,8 +10,10 @@ except Exception:
     class ConfigManager:  # type: ignore
         def __init__(self, *args, **kwargs):
             self.data = {}
+
         def get(self, seccion: str, clave: str, default=None):
             return default
+
 
 try:
     from config.assets import LOGO_B64, LOGO_COLOR_B64
@@ -136,12 +138,25 @@ def imagen_a_escpos(img) -> bytes:
 
 
 def guardar_ico(ruta: str = "logo.ico"):
+    if Image is None:
+        return
     logo = logo_color_pil() or logo_pil()
     if logo is not None:
         logo.convert("RGBA").save(
             ruta,
             sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
         )
+        return
+    fallback = Image.new("RGBA", (256, 256), (15, 23, 42, 255))
+    if ImageDraw is not None:
+        d = ImageDraw.Draw(fallback)
+        d.rounded_rectangle(
+            (24, 24, 232, 232), radius=36, fill=(37, 99, 235, 255)
+        )
+    fallback.save(
+        ruta,
+        sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
+    )
 
 
 def generar_texto_ticket(
