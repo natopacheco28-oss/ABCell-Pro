@@ -88,6 +88,10 @@ class DatabaseManager:
         "fecha_actualizacion": "TEXT DEFAULT ''",
     }
 
+    COLUMNAS_PAGOS = {
+        "metodo_pago": "TEXT DEFAULT 'Efectivo'",
+    }
+
     def _migrar_ordenes(self):
         """Repara bases de datos antiguas para que se puedan guardar órdenes."""
         cols = self._columnas_tabla("ordenes")
@@ -122,10 +126,171 @@ class DatabaseManager:
             cols = self._columnas_tabla("ordenes")
 
         # Esquema intermedio: faltan columnas sueltas.
-        for nombre, definicion in self.COLUMNAS_ORDENES.items():
-            if nombre not in cols:
+        self._agregar_columnas("ordenes", self.COLUMNAS_ORDENES)
+        self._agregar_columnas("pagos_orden", self.COLUMNAS_PAGOS)
+
+    def _agregar_columnas(self, tabla: str, columnas: dict):
+        existentes = self._columnas_tabla(tabla)
+        if not existentes:
+            return
+        for nombre, definicion in columnas.items():
+            if nombre not in existentes:
+                sql = f"ALTER TABLE {tabla} ADD COLUMN {nombre} {definicion}"
+                self.ejecutar(sql)
+
+    def _migrar_columnas(self):
+        self._migrar_ordenes()
+        cols_ub = self._columnas_tabla("ubicaciones")
+        if cols_ub and "activo" not in cols_ub:
+            self.ejecutar(
+                "ALTER TABLE ubicaciones ADD COLUMN activo INTEGER DEFAULT 1"
+            )
+            if "activa" in cols_ub:
                 self.ejecutar(
-                    f"ALTER TABLE ordenes ADD COLUMN {nombre} {definicion}"
+                    "UPDATE ubicaciones SET activo = COALESCE(activa, 1)"
                 )
 
-        cols_pg =
+        cols_srv = self._columnas_tabla("servicios_catalogo")
+        if cols_srv and "activo" not in cols_srv:
+            self.ejecutar(
+                "ALTER TABLE servicios_catalogo "
+                "ADD COLUMN activo INTEGER DEFAULT 1"
+            )
+            if "activa" in cols_srv:
+                self.ejecutar(
+                    "UPDATE servicios_catalogo "
+                    "SET activo = COALESCE(activa, 1)"
+                )
+
+    def _crear_tablas(self):
+        self.ejecutar(
+            """
+            CREATE TABLE IF NOT EXISTS ordenes (
+                folio INTEGER PRIMARY KEY AUTOINCREMENT,
+                cliente_nombre TEXT NOT NULL,
+                cliente_tel TEXT NOT NULL,
+                categoria TEXT DEFAULT 'Celulares',
+                marca TEXT NOT NULL,
+                modelo TEXT NOT NULL,
+                color TEXT DEFAULT '',
+                imei TEXT DEFAULT '',
+                pin_pass TEXT DEFAULT '',
+                patron TEXT DEFAULT 'Sin patrón',
+                estado_fisico TEXT DEFAULT '',
+                falla TEXT NOT NULL,
+                servicio_nombre TEXT DEFAULT '',
+                ubicacion TEXT DEFAULT 'Sin asignar',
+                estatus TEXT DEFAULT 'Recibido',
+                costo_repuesto REAL DEFAULT 0.0,
+                costo_total REAL DEFAULT 0.0,
+                anticipo REAL DEFAULT 0.0,
+                saldo REAL DEFAULT 0.0,
+                metodo_pago TEXT DEFAULT 'Efectivo',
+                notas_internas TEXT DEFAULT '',
+                fecha_ingreso TEXT NOT NULL,
+                fecha_actualizacion TEXT NOT NULL
+            )
+            """
+        )
+
+        self.ejecutar(
+            """
+            CREATE TABLE IF NOT EXISTS pagos_orden (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                folio INTEGER NOT NULL,
+                monto REAL NOT NULL,
+                metodo_pago TEXT DEFAULT 'Efectivo',
+                fecha TEXT NOT NULL,
+                FOREIGN KEY (folio) REFERENCES ordenes (folio)
+            )
+            """
+        )
+
+        self.ejecutar(
+            """
+            CREATE TABLE IF NOT EXISTS servicios_catalogo (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                categoria TEXT DEFAULT 'Celulares',
+                marca TEXT DEFAULT '',
+                modelo TEXT DEFAULT '',
+                nombre TEXT NOT NULL,
+                precio REAL DEFAULT 0.0,
+                activo INTEGER DEFAULT 1
+            )
+            """
+        )
+
+        self.ejecutar(
+            """
+            CREATE TABLE IF NOT EXISTS ubicaciones (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre TEXT NOT NULL UNIQUE,
+                tipo TEXT DEFAULT 'General',
+                descripcion TEXT DEFAULT '',
+                activo INTEGER DEFAULT 1
+            )
+            """
+        )
+
+        self.ejecutar(
+            """
+            CREATE TABLE IF NOT EXISTS notificaciones_wa (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                folio INTEGER DEFAULT 0,
+                cliente_nombre TEXT DEFAULT '',
+                telefono TEXT DEFAULT '',
+                tipo TEXT DEFAULT '',
+                mensaje TEXT DEFAULT '',
+                fecha TEXT NOT NULL
+            )
+            """
+        )
+
+    def _sembrar_datos_iniciales(self):
+        existe_ub = self.consultar_uno(
+            "SELECT COUNT(*) AS total FROM ubicaciones"
+        )
+        if not existe_ub or int(existe_ub["total"]) == 0:
+            ubicaciones_base = [
+                ("Mostrador", "Recepción", "Recepción y entrega rápida"),
+                ("Estante A-1", "Estante", "Celulares y tablets"),
+                ("Estante B-1", "Estante", "Consolas y controles"),
+                ("Gaveta 1", "Gaveta", "Equipos en diagnóstico o refacción"),
+            ]
+            for nombre, tipo, desc in ubicaciones_base:
+                self.ejecutar(
+                    "INSERT OR IGNORE INTO ubicaciones "
+                    "(nombre, tipo, descripcion, activo) VALUES (?, ?, ?, 1)",
+                    (nombre, tipo, desc),
+                )
+
+        existe_srv = self.consultar_uno(
+            "SELECT COUNT(*) AS total FROM servicios_catalogo"
+        )
+        if not existe_srv or int(existe_srv["total"]) == 0:
+            servicios_base = [
+                ("Celulares", "Samsung", "",
+                 "Cambio de pantalla / módulo", 950.0),
+                ("Celulares", "Apple (iPhone)", "", "Cambio de batería", 650.0),
+                ("Celulares", "", "", "Limpieza de centro de carga", 250.0),
+                ("Consolas", "PlayStation 4", "",
+                 "Mantenimiento y cambio de pasta térmica", 550.0),
+                ("Consolas", "Xbox One", "",
+                 "Mantenimiento y limpieza interna", 550.0),
+            ]
+            for cat, marca, modelo, nombre, precio in servicios_base:
+                self.ejecutar(
+                    """
+                    INSERT INTO servicios_catalogo
+                    (categoria, marca, modelo, nombre, precio, activo)
+                    VALUES (?, ?, ?, ?, ?, 1)
+                    """,
+                    (cat, marca, modelo, nombre, precio),
+                )
+
+    def cerrar(self):
+        try:
+            self.conn.commit()
+            self.conn.close()
+        except Exception:
+            pass
