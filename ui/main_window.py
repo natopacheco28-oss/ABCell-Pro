@@ -1326,4 +1326,278 @@ class MainWindow(QMainWindow):
         self.tbl_servicios.setHorizontalHeaderLabels(
             ["ID", "CATEGORÍA", "MARCA / MODELO", "SERVICIO", "PRECIO"]
         )
-        _configurar_tabla(self.tbl_servicios, stretch_col=3
+        _configurar_tabla(self.tbl_servicios, stretch_col=3)
+        l_serv.addWidget(self.tbl_servicios, 1)
+
+        p_ub = QWidget()
+        l_ub = QVBoxLayout(p_ub)
+        row_u = QHBoxLayout()
+        row_u.setSpacing(8)
+        self.u_nombre = QLineEdit()
+        self.u_nombre.setPlaceholderText("Ubicación (ej. Estante A-1)")
+        self.u_tipo = QLineEdit()
+        self.u_tipo.setPlaceholderText("Tipo")
+        self.u_desc = QLineEdit()
+        self.u_desc.setPlaceholderText("Descripción")
+        btn_add_u = QPushButton("+ Agregar")
+        btn_add_u.setObjectName("PrimaryBtn")
+        btn_add_u.setMinimumWidth(120)
+        btn_add_u.clicked.connect(self._agregar_ubicacion)
+        for widget in (self.u_nombre, self.u_tipo, self.u_desc, btn_add_u):
+            row_u.addWidget(widget)
+        l_ub.addLayout(row_u)
+
+        self.tbl_ubicaciones = QTableWidget(0, 4)
+        self.tbl_ubicaciones.setHorizontalHeaderLabels(["ID", "NOMBRE", "TIPO", "DESCRIPCIÓN"])
+        _configurar_tabla(self.tbl_ubicaciones, stretch_col=3)
+        l_ub.addWidget(self.tbl_ubicaciones, 1)
+
+        tabs.addTab(p_serv, "Servicios")
+        tabs.addTab(p_ub, "Ubicaciones")
+        lay.addWidget(tabs, 1)
+        return w
+
+    def _agregar_servicio(self):
+        if not self.s_nombre.text().strip():
+            return
+        self.service.guardar_servicio(
+            {
+                "categoria": self.s_cat.currentText(),
+                "marca": self.s_marca.text(),
+                "modelo": self.s_modelo.text(),
+                "nombre": self.s_nombre.text(),
+                "precio": self.s_precio.value(),
+                "activo": True,
+            }
+        )
+        self.s_nombre.clear()
+        self.s_precio.setValue(0)
+        self.refrescar_catalogo_ubicaciones()
+
+    def _agregar_ubicacion(self):
+        if not self.u_nombre.text().strip():
+            return
+        self.service.guardar_ubicacion(
+            self.u_nombre.text(), self.u_tipo.text() or "General", self.u_desc.text()
+        )
+        self.u_nombre.clear()
+        self.u_desc.clear()
+        self.refrescar_catalogo_ubicaciones()
+
+    def refrescar_catalogo_ubicaciones(self):
+        if not hasattr(self, "tbl_servicios"):
+            return
+        simbolo = self.config.get("regional", "simbolo_moneda", "$")
+        servicios = self.service.listar_servicios()
+        self.tbl_servicios.setRowCount(0)
+        for i, s in enumerate(servicios):
+            self.tbl_servicios.insertRow(i)
+            eq = f"{s.get('marca', '')} {s.get('modelo', '')}".strip() or "General"
+            vals = [
+                str(s["id"]),
+                s.get("categoria", ""),
+                eq,
+                s.get("nombre", ""),
+                f"{simbolo}{float(s.get('precio') or 0.0):,.2f}",
+            ]
+            for c, v in enumerate(vals):
+                self.tbl_servicios.setItem(i, c, QTableWidgetItem(v))
+
+        ubicaciones = self.service.listar_ubicaciones(solo_activas=False)
+        self.tbl_ubicaciones.setRowCount(0)
+        for i, u in enumerate(ubicaciones):
+            self.tbl_ubicaciones.insertRow(i)
+            vals = [str(u["id"]), u.get("nombre", ""), u.get("tipo", ""), u.get("descripcion", "")]
+            for c, v in enumerate(vals):
+                self.tbl_ubicaciones.setItem(i, c, QTableWidgetItem(v))
+
+        self._cargar_combos_orden()
+
+    # ------------------------------------------
+    # 4. ESTADÍSTICAS Y CAJA
+    # ------------------------------------------
+    def _build_reportes_tab(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(22, 16, 22, 16)
+        lay.setSpacing(12)
+
+        lbl = QLabel("Estadísticas y Reportes Financieros")
+        lbl.setObjectName("Title")
+        lay.addWidget(lbl)
+
+        row = QHBoxLayout()
+        row.setSpacing(12)
+        c_dia, self.r_dia, _ = _make_metric_card("Ingresos del Día", "$0.00", "Abonos y cobros hoy")
+        c_mes, self.r_mes, _ = _make_metric_card("Ingresos del Mes", "$0.00", "Flujo mensual")
+        c_gan, self.r_gan, _ = _make_metric_card(
+            "Ganancia Neta (Mes)", "$0.00", "Total órdenes menos repuestos"
+        )
+        c_sal, self.r_sal, _ = _make_metric_card("Saldos por Cobrar", "$0.00", "Pendiente en taller")
+        for c in (c_dia, c_mes, c_gan, c_sal):
+            row.addWidget(c)
+        lay.addLayout(row)
+
+        self.tbl_rep_cat = QTableWidget(0, 5)
+        self.tbl_rep_cat.setHorizontalHeaderLabels(
+            ["CATEGORÍA", "ÓRDENES", "FACTURADO", "COSTO REPUESTOS", "GANANCIA ESTIMADA"]
+        )
+        _configurar_tabla(self.tbl_rep_cat, stretch_col=0)
+        lay.addWidget(self.tbl_rep_cat, 1)
+        return w
+
+    def refrescar_reportes(self):
+        if not hasattr(self, "r_dia"):
+            return
+        simbolo = self.config.get("regional", "simbolo_moneda", "$")
+        rep = self.service.generar_reporte_financiero()
+        self.r_dia.setText(f"{simbolo}{rep['ingresos_diarios']:,.2f}")
+        self.r_mes.setText(f"{simbolo}{rep['ingresos_mensuales']:,.2f}")
+        self.r_gan.setText(f"{simbolo}{rep['ganancia_neta_mes']:,.2f}")
+        self.r_sal.setText(f"{simbolo}{rep['saldos_pendientes']:,.2f}")
+
+        self.tbl_rep_cat.setRowCount(0)
+        for idx, (cat, d) in enumerate(rep["por_categoria"].items()):
+            self.tbl_rep_cat.insertRow(idx)
+            vals = [
+                cat,
+                str(d["ordenes"]),
+                f"{simbolo}{d['facturado']:,.2f}",
+                f"{simbolo}{d['costo_rep']:,.2f}",
+                f"{simbolo}{d['ganancia']:,.2f}",
+            ]
+            for c_i, val in enumerate(vals):
+                self.tbl_rep_cat.setItem(idx, c_i, QTableWidgetItem(val))
+
+    # ------------------------------------------
+    # 5. WHATSAPP Y TICKETS
+    # ------------------------------------------
+    def _build_wa_tickets_tab(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(22, 16, 22, 16)
+        lay.setSpacing(12)
+
+        lbl = QLabel("WhatsApp y Historial de Notificaciones")
+        lbl.setObjectName("Title")
+        lay.addWidget(lbl)
+
+        self.tbl_wa = QTableWidget(0, 6)
+        self.tbl_wa.setHorizontalHeaderLabels(
+            ["FOLIO", "CLIENTE", "TELÉFONO", "TIPO", "FECHA", "MENSAJE"]
+        )
+        _configurar_tabla(self.tbl_wa, stretch_col=5)
+        lay.addWidget(self.tbl_wa, 1)
+        return w
+
+    def refrescar_wa(self):
+        if not hasattr(self, "tbl_wa"):
+            return
+        notifs = self.wa.listar_notificaciones()
+        self.tbl_wa.setRowCount(0)
+        for i, n in enumerate(notifs):
+            self.tbl_wa.insertRow(i)
+            vals = [
+                f"#{int(n.get('folio') or 0):04d}",
+                n.get("cliente_nombre", ""),
+                n.get("telefono", ""),
+                n.get("tipo", ""),
+                n.get("fecha", ""),
+                n.get("mensaje", ""),
+            ]
+            for c, v in enumerate(vals):
+                self.tbl_wa.setItem(i, c, QTableWidgetItem(v))
+
+    # ------------------------------------------
+    # 6. CONFIGURACIÓN DE TALLER
+    # ------------------------------------------
+    def _build_config_tab(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(22, 16, 22, 16)
+        lay.setSpacing(12)
+
+        lbl = QLabel("Configuración de Taller")
+        lbl.setObjectName("Title")
+        lay.addWidget(lbl)
+
+        card = QFrame()
+        card.setObjectName("Card")
+        form = QFormLayout(card)
+        form.setSpacing(10)
+        form.setContentsMargins(18, 18, 18, 18)
+
+        self.cfg_nombre = QLineEdit(
+            self.config.get("identidad", "nombre_establecimiento", "ABCell")
+        )
+        self.cfg_tel = QLineEdit(self.config.get("contacto", "telefono", ""))
+        self.cfg_dir = QLineEdit(self.config.get("contacto", "direccion", ""))
+        self.cfg_impresora = QLineEdit(self.config.get("notas", "impresora", ""))
+        self.cfg_tema = QComboBox()
+        self.cfg_tema.addItems(["Claro", "Oscuro"])
+        self.cfg_tema.setCurrentText("Claro" if self._es_tema_claro() else "Oscuro")
+        self.cfg_tema.currentTextChanged.connect(self._cambiar_tema_desde_combo)
+
+        row_logo = QHBoxLayout()
+        self.cfg_logo = QLineEdit(self.config.get("identidad", "logo_personalizado", ""))
+        btn_logo = QPushButton("Elegir logo")
+        btn_logo.clicked.connect(self._elegir_logo)
+        row_logo.addWidget(self.cfg_logo)
+        row_logo.addWidget(btn_logo)
+
+        form.addRow("Nombre del negocio:", self.cfg_nombre)
+        form.addRow("Teléfono / WhatsApp:", self.cfg_tel)
+        form.addRow("Dirección:", self.cfg_dir)
+        form.addRow("Impresora 58mm:", self.cfg_impresora)
+        form.addRow("Tema visual (Claro / Oscuro):", self.cfg_tema)
+        form.addRow("Logo personalizado:", row_logo)
+
+        lay.addWidget(card)
+
+        btn_save = QPushButton("Guardar Configuración")
+        btn_save.setObjectName("PrimaryBtn")
+        btn_save.setMinimumWidth(185)
+        btn_save.clicked.connect(self._guardar_config)
+        lay.addWidget(btn_save, alignment=Qt.AlignRight)
+        lay.addStretch()
+        return w
+
+    def _cambiar_tema_desde_combo(self, nuevo_tema: str):
+        self.config.set("apariencia", "tema", nuevo_tema)
+        self.config.save()
+        self.aplicar_tema()
+
+    def _elegir_logo(self):
+        ruta, _ = QFileDialog.getOpenFileName(
+            self, "Seleccionar logo", "", "Imágenes (*.png *.jpg *.jpeg *.webp)"
+        )
+        if ruta:
+            self.cfg_logo.setText(ruta)
+
+    def _guardar_config(self):
+        self.config.set("identidad", "nombre_establecimiento", self.cfg_nombre.text().strip())
+        self.config.set("notas", "nombre_comercial", self.cfg_nombre.text().strip())
+        self.config.set("contacto", "telefono", self.cfg_tel.text().strip())
+        self.config.set("notas", "telefono", self.cfg_tel.text().strip())
+        self.config.set("contacto", "direccion", self.cfg_dir.text().strip())
+        self.config.set("notas", "direccion", self.cfg_dir.text().strip())
+        self.config.set("notas", "impresora", self.cfg_impresora.text().strip())
+        self.config.set("apariencia", "tema", self.cfg_tema.currentText())
+        self.config.set("identidad", "logo_personalizado", self.cfg_logo.text().strip())
+        self.config.save()
+
+        self._aplicar_icono_abcell()
+        self.aplicar_tema()
+        self.lbl_brand_sidebar.setText(self.cfg_nombre.text().strip() or "ABCell")
+        self._cargar_logo_widget(self.lbl_logo_sidebar, 38)
+        self._cargar_logo_widget(self.lbl_topbar_logo, 26)
+        QMessageBox.information(self, "Guardado", "La configuración se guardó correctamente.")
+        self.refrescar_todo()
+
+    def refrescar_todo(self):
+        self._cargar_combos_orden()
+        self.refrescar_ordenes()
+        self.refrescar_clientes()
+        self.refrescar_catalogo_ubicaciones()
+        self.refrescar_reportes()
+        self.refrescar_wa()
