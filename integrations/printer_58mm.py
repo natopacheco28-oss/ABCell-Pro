@@ -3,7 +3,15 @@ import io
 import os
 import struct
 import textwrap
-from config.settings import ConfigManager
+
+try:
+    from config.settings import ConfigManager
+except Exception:
+    class ConfigManager:  # type: ignore
+        def __init__(self, *args, **kwargs):
+            self.data = {}
+        def get(self, seccion: str, clave: str, default=None):
+            return default
 
 try:
     from config.assets import LOGO_B64, LOGO_COLOR_B64
