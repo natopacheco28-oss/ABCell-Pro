@@ -25,6 +25,7 @@ class DatabaseManager:
             self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
             self.conn.row_factory = sqlite3.Row
         self._crear_tablas()
+        self._migrar_columnas()
         self._sembrar_datos_iniciales()
 
     def ejecutar(self, sql: str, params: tuple = ()):
@@ -43,6 +44,23 @@ class DatabaseManager:
         cur.execute(sql, params)
         row = cur.fetchone()
         return dict(row) if row else None
+
+    def _columnas_tabla(self, tabla: str) -> set[str]:
+        rows = self.consultar_todos(f"PRAGMA table_info({tabla})")
+        return {str(r["name"]) for r in rows}
+
+    def _migrar_columnas(self):
+        cols_ub = self._columnas_tabla("ubicaciones")
+        if cols_ub and "activo" not in cols_ub:
+            self.ejecutar("ALTER TABLE ubicaciones ADD COLUMN activo INTEGER DEFAULT 1")
+            if "activa" in cols_ub:
+                self.ejecutar("UPDATE ubicaciones SET activo = COALESCE(activa, 1)")
+
+        cols_srv = self._columnas_tabla("servicios_catalogo")
+        if cols_srv and "activo" not in cols_srv:
+            self.ejecutar("ALTER TABLE servicios_catalogo ADD COLUMN activo INTEGER DEFAULT 1")
+            if "activa" in cols_srv:
+                self.ejecutar("UPDATE servicios_catalogo SET activo = COALESCE(activa, 1)")
 
     def _crear_tablas(self):
         self.ejecutar(
