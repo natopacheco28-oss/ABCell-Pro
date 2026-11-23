@@ -256,7 +256,7 @@ class WorkshopService:
     def listar_servicios(self, solo_activos: bool = False) -> list[dict]:
         if solo_activos:
             return self.db.consultar_todos(
-                "SELECT * FROM servicios_catalogo WHERE activo = 1 ORDER BY id DESC"
+                "SELECT * FROM servicios_catalogo WHERE COALESCE(activo, 1) = 1 ORDER BY id DESC"
             )
         return self.db.consultar_todos("SELECT * FROM servicios_catalogo ORDER BY id DESC")
 
@@ -280,7 +280,7 @@ class WorkshopService:
     def listar_ubicaciones(self, solo_activas: bool = True) -> list[dict]:
         if solo_activas:
             return self.db.consultar_todos(
-                "SELECT * FROM ubicaciones WHERE activo = 1 ORDER BY id ASC"
+                "SELECT * FROM ubicaciones WHERE COALESCE(activo, 1) = 1 ORDER BY id ASC"
             )
         return self.db.consultar_todos("SELECT * FROM ubicaciones ORDER BY id ASC")
 
