@@ -95,7 +95,8 @@ class DatabaseManager:
             return
 
         # Esquema viejo: tenía 'fecha' (NOT NULL) en lugar de 'fecha_ingreso'.
-        # SQLite no permite quitar ese NOT NULL con ALTER, así que se reconstruye la tabla.
+        # SQLite no permite quitar ese NOT NULL con ALTER,
+        # así que se reconstruye la tabla.
         if "fecha" in cols and "fecha_ingreso" not in cols:
             cur = self.connect().cursor()
             cur.execute("ALTER TABLE ordenes RENAME TO ordenes_vieja")
@@ -112,15 +113,19 @@ class DatabaseManager:
                     "COALESCE(fecha, datetime('now','localtime'))",
                 ]
             )
-            self.ejecutar(f"INSERT INTO ordenes ({destino}) SELECT {origen} FROM ordenes_vieja")
+            sql = (
+                f"INSERT INTO ordenes ({destino}) "
+                f"SELECT {origen} FROM ordenes_vieja"
+            )
+            self.ejecutar(sql)
             self.ejecutar("DROP TABLE ordenes_vieja")
             cols = self._columnas_tabla("ordenes")
 
         # Esquema intermedio: faltan columnas sueltas.
         for nombre, definicion in self.COLUMNAS_ORDENES.items():
             if nombre not in cols:
-                self.ejecutar(f"ALTER TABLE ordenes ADD COLUMN {nombre} {definicion}")
+                self.ejecutar(
+                    f"ALTER TABLE ordenes ADD COLUMN {nombre} {definicion}"
+                )
 
-        cols_pg = self._columnas_tabla("pagos_orden")
-        if cols_pg and "metodo_pago" not in cols_pg:
-            self.ejecutar("ALTER TABLE pagos_orden ADD COLUMN
+        cols_pg =
