@@ -13,6 +13,16 @@ def _obtener_ruta_bd_por_defecto(nombre_archivo: str = "taller_abcell.db") -> st
     return os.path.join(base_dir, nombre_archivo)
 
 
+def _conexion_esta_cerrada(conn: sqlite3.Connection | None) -> bool:
+    if conn is None:
+        return True
+    try:
+        conn.execute("SELECT 1")
+        return False
+    except sqlite3.ProgrammingError:
+        return True
+
+
 class DatabaseManager:
     def __init__(self, db_path: str | None = None):
         self.db_path = db_path or _obtener_ruta_bd_por_defecto()
@@ -21,7 +31,7 @@ class DatabaseManager:
         self.init_db()
 
     def connect(self) -> sqlite3.Connection:
-        if getattr(self, "conn", None) is None:
+        if _conexion_esta_cerrada(getattr(self, "conn", None)):
             self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
             self.conn.row_factory = sqlite3.Row
         return self.conn
