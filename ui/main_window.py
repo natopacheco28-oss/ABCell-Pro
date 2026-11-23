@@ -1146,3 +1146,184 @@ class MainWindow(QMainWindow):
         self.lbl_resumen_extra.setText(f"Listas para entrega: {metricas['por_entregar']}")
         if metricas["guardados_7"] > 0:
             self.lbl_c1_sub.setText(f"{metricas['guardados_7']} guardados +7 días")
+        else:
+            self.lbl_c1_sub.setText("¡Todo en orden!")
+
+        ubicaciones = self.service.listar_ubicaciones(solo_activas=True)
+        actual = self.cmb_orden_ubicacion.currentText()
+        self.cmb_orden_ubicacion.clear()
+        for u in ubicaciones:
+            self.cmb_orden_ubicacion.addItem(u["nombre"])
+        if actual:
+            i = self.cmb_orden_ubicacion.findText(actual)
+            if i >= 0:
+                self.cmb_orden_ubicacion.setCurrentIndex(i)
+
+    def _cargar_orden_seleccionada(self):
+        folio = self._folio_seleccionado()
+        if not folio:
+            return
+        o = self.service.obtener_orden(folio)
+        if not o:
+            return
+        self.lbl_folio_sel.setText(f"Orden #{folio:04d} · {o.get('cliente_nombre', '')}")
+        self.cmb_orden_estatus.setCurrentText(o.get("estatus", "Recibido"))
+        idx_u = self.cmb_orden_ubicacion.findText(o.get("ubicacion", ""))
+        if idx_u >= 0:
+            self.cmb_orden_ubicacion.setCurrentIndex(idx_u)
+        self.spn_orden_abono.setValue(float(o.get("saldo") or 0.0))
+
+    def _actualizar_orden_sel(self):
+        folio = self._folio_seleccionado()
+        if not folio:
+            QMessageBox.information(self, "Selecciona orden", "Selecciona una orden de la tabla.")
+            return
+        o = self.service.obtener_orden(folio)
+        if not o:
+            return
+        self.service.actualizar_orden_detalle(
+            folio=folio,
+            estatus=self.cmb_orden_estatus.currentText(),
+            ubicacion=self.cmb_orden_ubicacion.currentText(),
+            notas_internas=o.get("notas_internas", ""),
+            liquidar_al_entregar=True,
+            metodo_pago_entrega=self.cmb_orden_mpago.currentText(),
+        )
+        self.refrescar_ordenes()
+        QMessageBox.information(self, "Actualizado", f"Orden #{folio:04d} actualizada.")
+
+    def _abonar_orden_sel(self):
+        folio = self._folio_seleccionado()
+        if not folio:
+            QMessageBox.information(self, "Selecciona orden", "Selecciona una orden de la tabla.")
+            return
+        monto = self.spn_orden_abono.value()
+        if monto <= 0:
+            QMessageBox.warning(self, "Monto inválido", "Ingresa un monto mayor a cero.")
+            return
+        self.service.registrar_pago(folio, monto, self.cmb_orden_mpago.currentText())
+        self.refrescar_ordenes()
+        QMessageBox.information(self, "Abono registrado", f"Abono aplicado a #{folio:04d}.")
+
+    def _imprimir_orden_sel(self):
+        folio = self._folio_seleccionado()
+        if not folio:
+            QMessageBox.information(self, "Selecciona orden", "Selecciona una orden de la tabla.")
+            return
+        o = self.service.obtener_orden(folio)
+        if not o:
+            return
+        ok, msg = imprimir_ticket_58mm(o, self.config)
+        if ok:
+            QMessageBox.information(self, "Impresión", msg)
+        else:
+            QMessageBox.warning(
+                self, "Ticket 58mm", f"{msg}\n\nVista previa:\n{generar_texto_ticket(o, self.config)}"
+            )
+
+    def _enviar_wa_orden_sel(self):
+        folio = self._folio_seleccionado()
+        if not folio:
+            QMessageBox.information(self, "Selecciona orden", "Selecciona una orden de la tabla.")
+            return
+        o = self.service.obtener_orden(folio)
+        if not o:
+            return
+        tipo = "listo" if o.get("estatus") == "Listo para entregar" else "recibido"
+        msg = self.wa.construir_mensaje(tipo, o)
+        url = self.wa.generar_url_wa(o.get("cliente_tel", ""), msg)
+        self.wa.registrar_notificacion(
+            folio, o.get("cliente_nombre", ""), o.get("cliente_tel", ""), tipo, msg
+        )
+        webbrowser.open(url)
+
+    # ------------------------------------------
+    # 2. CLIENTES
+    # ------------------------------------------
+    def _build_clientes_tab(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(22, 16, 22, 16)
+        lay.setSpacing(12)
+
+        lbl = QLabel("Clientes (Historial)")
+        lbl.setObjectName("Title")
+        lay.addWidget(lbl)
+
+        self.txt_buscar_cli = QLineEdit()
+        self.txt_buscar_cli.setPlaceholderText("Buscar cliente por nombre, teléfono o correo...")
+        self.txt_buscar_cli.textChanged.connect(self.refrescar_clientes)
+        lay.addWidget(self.txt_buscar_cli)
+
+        self.tbl_clientes = QTableWidget(0, 6)
+        self.tbl_clientes.setHorizontalHeaderLabels(
+            ["ID", "NOMBRE", "TELÉFONO", "ÓRDENES", "TOTAL FACTURADO", "SALDO PENDIENTE"]
+        )
+        _configurar_tabla(self.tbl_clientes, stretch_col=1)
+        lay.addWidget(self.tbl_clientes, 1)
+        return w
+
+    def refrescar_clientes(self):
+        if not hasattr(self, "tbl_clientes"):
+            return
+        simbolo = self.config.get("regional", "simbolo_moneda", "$")
+        clientes = self.service.listar_clientes(self.txt_buscar_cli.text())
+        self.tbl_clientes.setRowCount(0)
+        for idx, cl in enumerate(clientes):
+            self.tbl_clientes.insertRow(idx)
+            vals = [
+                str(cl["id"]),
+                cl.get("nombre", ""),
+                cl.get("telefono", ""),
+                str(cl.get("total_ordenes", 0)),
+                f"{simbolo}{float(cl.get('total_facturado') or 0.0):,.2f}",
+                f"{simbolo}{float(cl.get('saldo_pendiente') or 0.0):,.2f}",
+            ]
+            for c_idx, val in enumerate(vals):
+                self.tbl_clientes.setItem(idx, c_idx, QTableWidgetItem(val))
+
+    # ------------------------------------------
+    # 3. CATÁLOGO Y UBICACIONES
+    # ------------------------------------------
+    def _build_catalogo_ubicaciones_tab(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(22, 16, 22, 16)
+        lay.setSpacing(12)
+
+        lbl = QLabel("Catálogo de Servicios y Ubicaciones")
+        lbl.setObjectName("Title")
+        lay.addWidget(lbl)
+
+        tabs = QTabWidget()
+
+        p_serv = QWidget()
+        l_serv = QVBoxLayout(p_serv)
+        row_s = QHBoxLayout()
+        row_s.setSpacing(8)
+        self.s_cat = QComboBox()
+        self.s_cat.setMinimumWidth(125)
+        self.s_cat.addItems(CATEGORIAS_EQUIPO)
+        self.s_marca = QLineEdit()
+        self.s_marca.setPlaceholderText("Marca / Consola")
+        self.s_modelo = QLineEdit()
+        self.s_modelo.setPlaceholderText("Modelo")
+        self.s_nombre = QLineEdit()
+        self.s_nombre.setPlaceholderText("Servicio (ej. Cambio de pantalla / Limpieza)")
+        self.s_precio = QDoubleSpinBox()
+        self.s_precio.setRange(0, 999999)
+        self.s_precio.setDecimals(2)
+        self.s_precio.setMinimumWidth(110)
+        btn_add_s = QPushButton("+ Agregar")
+        btn_add_s.setObjectName("PrimaryBtn")
+        btn_add_s.setMinimumWidth(120)
+        btn_add_s.clicked.connect(self._agregar_servicio)
+        for widget in (self.s_cat, self.s_marca, self.s_modelo, self.s_nombre, self.s_precio, btn_add_s):
+            row_s.addWidget(widget)
+        l_serv.addLayout(row_s)
+
+        self.tbl_servicios = QTableWidget(0, 5)
+        self.tbl_servicios.setHorizontalHeaderLabels(
+            ["ID", "CATEGORÍA", "MARCA / MODELO", "SERVICIO", "PRECIO"]
+        )
+        _configurar_tabla(self.tbl_servicios, stretch_col=3
