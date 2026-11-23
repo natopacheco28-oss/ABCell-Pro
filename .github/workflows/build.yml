@@ -36,6 +36,15 @@ jobs:
         run: |
           pyinstaller --onefile --noconsole --icon logo.ico `
             --name ABCell_Gestion_Taller `
+            --hidden-import config.settings `
+            --hidden-import config.assets `
+            --hidden-import core.catalog_data `
+            --hidden-import database.db_manager `
+            --hidden-import services.workshop_service `
+            --hidden-import integrations.printer_58mm `
+            --hidden-import integrations.whatsapp_center `
+            --hidden-import ui.theme `
+            --hidden-import ui.main_window `
             --add-data "config;config" `
             --add-data "core;core" `
             --add-data "database;database" `
