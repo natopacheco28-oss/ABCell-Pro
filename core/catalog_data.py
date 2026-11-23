@@ -1,12 +1,81 @@
 CATEGORIAS_EQUIPO: list[str] = [
     "Celulares",
+    "Consolas",
     "Tablets",
     "Laptops",
     "Smartwatches",
-    "Consolas",
     "Accesorios",
     "Otros",
 ]
+
+SUBCATEGORIAS_POR_CATEGORIA: dict[str, list[str]] = {
+    "Celulares": [
+        "Samsung",
+        "Apple (iPhone)",
+        "Xiaomi / Redmi",
+        "Motorola",
+        "OPPO",
+        "Vivo",
+        "Realme",
+        "Huawei",
+        "ZTE",
+        "Honor",
+        "Otra marca",
+    ],
+    "Consolas": [
+        "PlayStation 5",
+        "PlayStation 4",
+        "PlayStation 3",
+        "Xbox Series X|S",
+        "Xbox One",
+        "Xbox 360",
+        "Nintendo Switch",
+        "Nintendo Switch Lite",
+        "Nintendo Switch OLED",
+        "Otra consola",
+    ],
+    "Tablets": [
+        "Apple (iPad)",
+        "Samsung Galaxy Tab",
+        "Lenovo Tab",
+        "Xiaomi Pad",
+        "Huawei MatePad",
+        "Amazon Fire",
+        "Otra marca",
+    ],
+    "Laptops": [
+        "HP",
+        "Lenovo",
+        "Dell",
+        "ASUS",
+        "Acer",
+        "Apple (MacBook)",
+        "MSI",
+        "Huawei MateBook",
+        "Otra marca",
+    ],
+    "Smartwatches": [
+        "Apple Watch",
+        "Samsung Galaxy Watch",
+        "Xiaomi / Amazfit",
+        "Huawei Watch",
+        "Otra marca",
+    ],
+    "Accesorios": [
+        "Cargadores y cables",
+        "Audífonos / TWS",
+        "Bocinas / Powerbank",
+        "Fundas y micas",
+        "Controles",
+        "Otro accesorio",
+    ],
+    "Otros": [
+        "Bocina portátil",
+        "TV / Monitor",
+        "Cámara / Drone",
+        "Otro equipo",
+    ],
+}
 
 ESTATUS_ORDEN: list[str] = [
     "Recibido",
@@ -23,13 +92,4 @@ METODOS_PAGO: list[str] = [
     "Transferencia",
     "Tarjeta",
     "Depósito",
-]
-
-PATRONES_SUGERIDOS: list[str] = [
-    "Sin patrón",
-    "Patrón en L",
-    "Patrón en Z",
-    "Patrón en N",
-    "Cuadro / espiral",
-    "Dibujado en nota física",
 ]
