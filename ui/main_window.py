@@ -1489,4 +1489,77 @@ class MainWindow(QMainWindow):
         form.setSpacing(10)
         form.setContentsMargins(18, 18, 18, 18)
 
-        self
+        self.cfg_nombre = QLineEdit(
+            self.config.get("identidad", "nombre_establecimiento", "ABCell")
+        )
+        self.cfg_tel = QLineEdit(self.config.get("contacto", "telefono", ""))
+        self.cfg_dir = QLineEdit(self.config.get("contacto", "direccion", ""))
+        self.cfg_impresora = QLineEdit(self.config.get("notas", "impresora", ""))
+        self.cfg_tema = QComboBox()
+        self.cfg_tema.addItems(["Claro", "Oscuro"])
+        self.cfg_tema.setCurrentText("Claro" if self._es_tema_claro() else "Oscuro")
+        self.cfg_tema.currentTextChanged.connect(self._cambiar_tema_desde_combo)
+
+        row_logo = QHBoxLayout()
+        self.cfg_logo = QLineEdit(self.config.get("identidad", "logo_personalizado", ""))
+        btn_logo = QPushButton("Elegir logo")
+        btn_logo.clicked.connect(self._elegir_logo)
+        row_logo.addWidget(self.cfg_logo)
+        row_logo.addWidget(btn_logo)
+
+        form.addRow("Nombre del negocio:", self.cfg_nombre)
+        form.addRow("Teléfono / WhatsApp:", self.cfg_tel)
+        form.addRow("Dirección:", self.cfg_dir)
+        form.addRow("Impresora 58mm:", self.cfg_impresora)
+        form.addRow("Tema visual (Claro / Oscuro):", self.cfg_tema)
+        form.addRow("Logo personalizado:", row_logo)
+
+        lay.addWidget(card)
+
+        btn_save = QPushButton("Guardar Configuración")
+        btn_save.setObjectName("PrimaryBtn")
+        btn_save.setMinimumWidth(185)
+        btn_save.clicked.connect(self._guardar_config)
+        lay.addWidget(btn_save, alignment=Qt.AlignRight)
+        lay.addStretch()
+        return w
+
+    def _cambiar_tema_desde_combo(self, nuevo_tema: str):
+        self.config.set("apariencia", "tema", nuevo_tema)
+        self.config.save()
+        self.aplicar_tema()
+
+    def _elegir_logo(self):
+        ruta, _ = QFileDialog.getOpenFileName(
+            self, "Seleccionar logo", "", "Imágenes (*.png *.jpg *.jpeg *.webp)"
+        )
+        if ruta:
+            self.cfg_logo.setText(ruta)
+
+    def _guardar_config(self):
+        self.config.set("identidad", "nombre_establecimiento", self.cfg_nombre.text().strip())
+        self.config.set("notas", "nombre_comercial", self.cfg_nombre.text().strip())
+        self.config.set("contacto", "telefono", self.cfg_tel.text().strip())
+        self.config.set("notas", "telefono", self.cfg_tel.text().strip())
+        self.config.set("contacto", "direccion", self.cfg_dir.text().strip())
+        self.config.set("notas", "direccion", self.cfg_dir.text().strip())
+        self.config.set("notas", "impresora", self.cfg_impresora.text().strip())
+        self.config.set("apariencia", "tema", self.cfg_tema.currentText())
+        self.config.set("identidad", "logo_personalizado", self.cfg_logo.text().strip())
+        self.config.save()
+
+        self._aplicar_icono_abcell()
+        self.aplicar_tema()
+        self.lbl_brand_sidebar.setText(self.cfg_nombre.text().strip() or "ABCell")
+        self._cargar_logo_widget(self.lbl_logo_sidebar, 38)
+        self._cargar_logo_widget(self.lbl_topbar_logo, 26)
+        QMessageBox.information(self, "Guardado", "La configuración se guardó correctamente.")
+        self.refrescar_todo()
+
+    def refrescar_todo(self):
+        self._cargar_combos_orden()
+        self.refrescar_ordenes()
+        self.refrescar_clientes()
+        self.refrescar_catalogo_ubicaciones()
+        self.refrescar_reportes()
+        self.refrescar_wa()
