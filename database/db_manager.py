@@ -20,27 +20,31 @@ class DatabaseManager:
         self.conn.row_factory = sqlite3.Row
         self.init_db()
 
-    def init_db(self):
+    def connect(self) -> sqlite3.Connection:
         if getattr(self, "conn", None) is None:
             self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
             self.conn.row_factory = sqlite3.Row
+        return self.conn
+
+    def init_db(self):
+        self.connect()
         self._crear_tablas()
         self._migrar_columnas()
         self._sembrar_datos_iniciales()
 
     def ejecutar(self, sql: str, params: tuple = ()):
-        cur = self.conn.cursor()
+        cur = self.connect().cursor()
         cur.execute(sql, params)
         self.conn.commit()
         return cur
 
     def consultar_todos(self, sql: str, params: tuple = ()) -> list[dict]:
-        cur = self.conn.cursor()
+        cur = self.connect().cursor()
         cur.execute(sql, params)
         return [dict(row) for row in cur.fetchall()]
 
     def consultar_uno(self, sql: str, params: tuple = ()) -> dict | None:
-        cur = self.conn.cursor()
+        cur = self.connect().cursor()
         cur.execute(sql, params)
         row = cur.fetchone()
         return dict(row) if row else None
