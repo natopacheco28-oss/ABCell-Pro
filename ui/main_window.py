@@ -1,8 +1,8 @@
 import os
 import webbrowser
 from datetime import datetime
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap
+from PySide6.QtCore import QPointF, Qt, Signal
+from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
@@ -28,7 +28,12 @@ from PySide6.QtWidgets import (
 
 from config.settings import ConfigManager
 from database.db_manager import DatabaseManager
-from integrations.printer_58mm import generar_texto_ticket, imprimir_ticket_58mm, logo_color_pil
+from integrations.printer_58mm import (
+    generar_texto_ticket,
+    imprimir_ticket_58mm,
+    logo_color_pil,
+    logo_pil,
+)
 from ui.theme import DARK_QSS, LIGHT_QSS
 
 try:
@@ -36,18 +41,34 @@ try:
         CATEGORIAS_EQUIPO,
         ESTATUS_ORDEN,
         METODOS_PAGO,
-        PATRONES_SUGERIDOS,
+        SUBCATEGORIAS_POR_CATEGORIA,
     )
 except Exception:
     CATEGORIAS_EQUIPO = [
         "Celulares",
+        "Consolas",
         "Tablets",
         "Laptops",
         "Smartwatches",
-        "Consolas",
         "Accesorios",
         "Otros",
     ]
+    SUBCATEGORIAS_POR_CATEGORIA = {
+        "Celulares": ["Samsung", "Apple (iPhone)", "Xiaomi / Redmi", "Motorola", "Otra marca"],
+        "Consolas": [
+            "PlayStation 5",
+            "PlayStation 4",
+            "Xbox Series X|S",
+            "Xbox One",
+            "Nintendo Switch",
+            "Otra consola",
+        ],
+        "Tablets": ["Apple (iPad)", "Samsung Galaxy Tab", "Lenovo Tab", "Otra marca"],
+        "Laptops": ["HP", "Lenovo", "Dell", "ASUS", "Apple (MacBook)", "Otra marca"],
+        "Smartwatches": ["Apple Watch", "Samsung Galaxy Watch", "Otra marca"],
+        "Accesorios": ["Cargadores y cables", "Audífonos / TWS", "Controles", "Otro accesorio"],
+        "Otros": ["Otro equipo"],
+    }
     ESTATUS_ORDEN = [
         "Recibido",
         "En diagnóstico",
@@ -58,85 +79,148 @@ except Exception:
         "Cancelado",
     ]
     METODOS_PAGO = ["Efectivo", "Transferencia", "Tarjeta", "Depósito"]
-    PATRONES_SUGERIDOS = ["Sin patrón", "Patrón en L", "Patrón en Z"]
 
-try:
-    from services.workshop_service import WorkshopService
-except Exception:
-    class WorkshopService:  # type: ignore
-        def __init__(self, db, config):
-            self.db = db
-            self.config = config
 
-        def listar_ordenes(self, *args, **kwargs):
-            return []
+class PatronCanvasWidget(QWidget):
+    """Cuadrícula interactiva de 3x3 puntos para dibujar el patrón de desbloqueo a mano."""
 
-        def listar_clientes(self, *args, **kwargs):
-            return []
+    patron_cambiado = Signal(str)
 
-        def listar_servicios(self, *args, **kwargs):
-            return []
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(210, 210)
+        self.setMouseTracking(True)
+        self.dibujando = False
+        self.secuencia: list[int] = []
+        self.pos_actual: QPointF | None = None
+        self.puntos: list[tuple[int, QPointF]] = []
+        self._calcular_puntos()
 
-        def listar_ubicaciones(self, *args, **kwargs):
-            return []
+    def _calcular_puntos(self):
+        self.puntos.clear()
+        margen = 36.0
+        paso = (self.width() - 2 * margen) / 2.0
+        idx = 1
+        for fila in range(3):
+            for col in range(3):
+                x = margen + col * paso
+                y = margen + fila * paso
+                self.puntos.append((idx, QPointF(x, y)))
+                idx += 1
 
-        def obtener_metricas_dashboard(self, *args, **kwargs):
-            return {
-                "activas": 0,
-                "por_entregar": 0,
-                "guardados_7": 0,
-                "anticipos_totales": 0.0,
-                "saldos_pendientes": 0.0,
-                "lista_por_entregar": [],
-                "actividad_reciente": [],
-            }
+    def limpiar_patron(self):
+        self.dibujando = False
+        self.secuencia.clear()
+        self.pos_actual = None
+        self.update()
+        self.patron_cambiado.emit("Sin patrón")
 
-        def generar_reporte_financiero(self, *args, **kwargs):
-            return {
-                "ingresos_diarios": 0.0,
-                "ingresos_mensuales": 0.0,
-                "saldos_pendientes": 0.0,
-                "ganancia_neta_mes": 0.0,
-                "por_categoria": {},
-            }
+    def obtener_texto_patron(self) -> str:
+        if not self.secuencia:
+            return "Sin patrón"
+        return " -> ".join(str(n) for n in self.secuencia)
 
-        def crear_orden(self, datos):
-            return 1
+    def establecer_patron_texto(self, texto: str):
+        self.secuencia.clear()
+        if texto and "->" in texto:
+            for parte in texto.split("->"):
+                limpio = parte.strip()
+                if limpio.isdigit():
+                    num = int(limpio)
+                    if 1 <= num <= 9 and num not in self.secuencia:
+                        self.secuencia.append(num)
+        self.update()
+        self.patron_cambiado.emit(self.obtener_texto_patron())
 
-        def obtener_orden(self, folio):
-            return None
+    def _punto_cercano(self, pos: QPointF, radio: float = 24.0) -> int | None:
+        for num, pt in self.puntos:
+            dx = pos.x() - pt.x()
+            dy = pos.y() - pt.y()
+            if (dx * dx + dy * dy) <= radio * radio:
+                return num
+        return None
 
-        def registrar_pago(self, *args, **kwargs):
-            return None
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            pos = event.position()
+            self.dibujando = True
+            self.secuencia.clear()
+            self.pos_actual = pos
+            num = self._punto_cercano(pos)
+            if num is not None:
+                self.secuencia.append(num)
+            self.update()
+            self.patron_cambiado.emit(self.obtener_texto_patron())
 
-        def actualizar_orden_detalle(self, *args, **kwargs):
-            return None
+    def mouseMoveEvent(self, event):
+        if not self.dibujando:
+            return
+        pos = event.position()
+        self.pos_actual = pos
+        num = self._punto_cercano(pos)
+        if num is not None and num not in self.secuencia:
+            self.secuencia.append(num)
+            self.patron_cambiado.emit(self.obtener_texto_patron())
+        self.update()
 
-        def guardar_servicio(self, *args, **kwargs):
-            return 1
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton and self.dibujando:
+            self.dibujando = False
+            self.pos_actual = None
+            self.update()
+            self.patron_cambiado.emit(self.obtener_texto_patron())
 
-        def guardar_ubicacion(self, *args, **kwargs):
-            return None
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
 
-try:
-    from integrations.whatsapp_center import WhatsAppCenter
-except Exception:
-    class WhatsAppCenter:  # type: ignore
-        def __init__(self, db, config):
-            self.db = db
-            self.config = config
+        # Fondo del lienzo
+        painter.setPen(QPen(QColor("#cbd5e1"), 1.5))
+        painter.setBrush(QColor("#f8fafc"))
+        painter.drawRoundedRect(self.rect().adjusted(1, 1, -1, -1), 12, 12)
 
-        def construir_mensaje(self, tipo, orden):
-            return ""
+        mapa = {num: pt for num, pt in self.puntos}
 
-        def generar_url_wa(self, telefono, mensaje):
-            return "https://wa.me/"
+        # Líneas conectando la secuencia
+        if len(self.secuencia) >= 2:
+            pen_linea = QPen(QColor("#0284c7"), 4, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+            painter.setPen(pen_linea)
+            for i in range(len(self.secuencia) - 1):
+                p1 = mapa[self.secuencia[i]]
+                p2 = mapa[self.secuencia[i + 1]]
+                painter.drawLine(p1, p2)
 
-        def registrar_notificacion(self, *args, **kwargs):
-            return None
+        # Línea temporal hacia el cursor mientras dibuja
+        if self.dibujando and self.secuencia and self.pos_actual is not None:
+            ultimo_pt = mapa[self.secuencia[-1]]
+            painter.setPen(QPen(QColor("#38bdf8"), 2.5, Qt.DashLine, Qt.RoundCap))
+            painter.drawLine(ultimo_pt, self.pos_actual)
 
-        def listar_notificaciones(self, *args, **kwargs):
-            return []
+        # Dibujar los 9 puntos
+        for num, pt in self.puntos:
+            seleccionado = num in self.secuencia
+            if seleccionado:
+                painter.setPen(QPen(QColor("#0284c7"), 2))
+                painter.setBrush(QColor("#e0f2fe"))
+                painter.drawEllipse(pt, 16, 16)
+
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(QColor("#0284c7"))
+                painter.drawEllipse(pt, 10, 10)
+
+                painter.setPen(QColor("#ffffff"))
+                painter.setFont(self.font())
+                painter.drawText(
+                    int(pt.x()) - 10, int(pt.y()) - 10, 20, 20, Qt.AlignCenter, str(num)
+                )
+            else:
+                painter.setPen(QPen(QColor("#94a3b8"), 2))
+                painter.setBrush(QColor("#ffffff"))
+                painter.drawEllipse(pt, 11, 11)
+
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(QColor("#64748b"))
+                painter.drawEllipse(pt, 4, 4)
 
 
 def _make_summary_card(titulo: str, subtitulo: str, enlace: str, badge_bg: str, badge_fg: str):
@@ -223,8 +307,30 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1060, 700)
 
         self._build_ui()
+        self._aplicar_icono_abcell()
         self.aplicar_tema()
         self.refrescar_todo()
+
+    def _obtener_pixmap_abcell(self) -> QPixmap | None:
+        pil_img = logo_color_pil(self.config) or logo_pil(self.config)
+        if pil_img is not None:
+            tmp_path = os.path.join(os.path.dirname(os.path.abspath(self.db.db_path)), "_tmp_logo_ui.png")
+            pil_img.save(tmp_path)
+            pm = QPixmap(tmp_path)
+            if not pm.isNull():
+                return pm
+
+        for candidato in ("logo.ico", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "logo.ico")):
+            if os.path.exists(candidato):
+                pm = QPixmap(candidato)
+                if not pm.isNull():
+                    return pm
+        return None
+
+    def _aplicar_icono_abcell(self):
+        pm = self._obtener_pixmap_abcell()
+        if pm is not None and not pm.isNull():
+            self.setWindowIcon(QIcon(pm))
 
     def _es_tema_claro(self) -> bool:
         tema = str(self.config.get("apariencia", "tema", "Claro")).strip().lower()
@@ -253,13 +359,19 @@ class MainWindow(QMainWindow):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        # Barra superior estilo referencia
+        # Barra superior
         topbar = QFrame()
         topbar.setObjectName("TopBar")
         topbar.setFixedHeight(52)
         tb_lay = QHBoxLayout(topbar)
         tb_lay.setContentsMargins(16, 8, 16, 8)
         tb_lay.setSpacing(10)
+
+        self.lbl_topbar_logo = QLabel()
+        self.lbl_topbar_logo.setFixedSize(28, 28)
+        self.lbl_topbar_logo.setAlignment(Qt.AlignCenter)
+        self._cargar_logo_widget(self.lbl_topbar_logo, 26)
+        tb_lay.addWidget(self.lbl_topbar_logo)
 
         self.txt_global_search = QLineEdit()
         self.txt_global_search.setPlaceholderText("Buscar [ENTER] en órdenes o clientes...")
@@ -290,7 +402,7 @@ class MainWindow(QMainWindow):
         body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(0)
 
-        # Barra lateral limpia
+        # Barra lateral
         sidebar = QFrame()
         sidebar.setObjectName("Sidebar")
         sidebar.setFixedWidth(225)
@@ -301,9 +413,9 @@ class MainWindow(QMainWindow):
         brand_row = QHBoxLayout()
         brand_row.setSpacing(8)
         self.lbl_logo_sidebar = QLabel()
-        self.lbl_logo_sidebar.setFixedSize(36, 36)
+        self.lbl_logo_sidebar.setFixedSize(40, 40)
         self.lbl_logo_sidebar.setAlignment(Qt.AlignCenter)
-        self._cargar_logo_widget(self.lbl_logo_sidebar, 34)
+        self._cargar_logo_widget(self.lbl_logo_sidebar, 38)
 
         self.lbl_brand_sidebar = QLabel(
             self.config.get("identidad", "nombre_establecimiento", "ABCell")
@@ -364,18 +476,15 @@ class MainWindow(QMainWindow):
             self.refrescar_ordenes()
 
     def _cargar_logo_widget(self, label: QLabel, tam: int):
-        pil_img = logo_color_pil(self.config)
-        if pil_img is None:
+        pm = self._obtener_pixmap_abcell()
+        if pm is None or pm.isNull():
             label.setText("AB")
             label.setStyleSheet(
                 "background-color: #e0f2fe; color: #0284c7; border-radius: 10px; font-weight: 800; font-size: 13px;"
             )
             return
-        tmp_path = os.path.join(os.path.dirname(self.db.db_path), "_tmp_logo_ui.png")
-        pil_img.save(tmp_path)
-        pm = QPixmap(tmp_path)
-        if not pm.isNull():
-            label.setPixmap(pm.scaled(tam, tam, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        label.setStyleSheet("background-color: transparent;")
+        label.setPixmap(pm.scaled(tam, tam, Qt.KeepAspectRatio, Qt.SmoothTransformation))
 
     def ir_a_seccion(self, indice: int):
         self.stack.setCurrentIndex(indice)
@@ -386,7 +495,7 @@ class MainWindow(QMainWindow):
         self.refrescar_todo()
 
     # ------------------------------------------
-    # 0. TALLER Y ÓRDENES (ESTILO REFERENCIA)
+    # 0. TALLER Y ÓRDENES
     # ------------------------------------------
     def _build_taller_ordenes_tab(self) -> QWidget:
         w = QWidget()
@@ -394,7 +503,6 @@ class MainWindow(QMainWindow):
         lay.setContentsMargins(22, 16, 22, 16)
         lay.setSpacing(12)
 
-        # Cabecera con título, ruta y botón "+ Crear"
         head_row = QHBoxLayout()
         title_box = QVBoxLayout()
         title_box.setSpacing(2)
@@ -416,7 +524,6 @@ class MainWindow(QMainWindow):
         head_row.addWidget(btn_crear)
         lay.addLayout(head_row)
 
-        # 3 tarjetas superiores estilo referencia
         cards_row = QHBoxLayout()
         cards_row.setSpacing(14)
 
@@ -435,7 +542,6 @@ class MainWindow(QMainWindow):
         cards_row.addWidget(c3)
         lay.addLayout(cards_row)
 
-        # Pestañas de flujo (Entrada / Reparación / Salida / Todas)
         stage_bar = QHBoxLayout()
         stage_bar.setSpacing(6)
         etapas = [
@@ -455,7 +561,6 @@ class MainWindow(QMainWindow):
         stage_bar.addStretch()
         lay.addLayout(stage_bar)
 
-        # Sub-barra de conteo tipo "Cantidad: X Órdenes"
         sub_bar = QFrame()
         sub_bar.setObjectName("SubBar")
         sb_l = QHBoxLayout(sub_bar)
@@ -469,7 +574,6 @@ class MainWindow(QMainWindow):
         sb_l.addWidget(self.lbl_resumen_extra)
         lay.addWidget(sub_bar)
 
-        # Contenedor principal con cabecera de tabla + buscador + filtros
         tbl_card = QFrame()
         tbl_card.setObjectName("Card")
         tc_lay = QVBoxLayout(tbl_card)
@@ -505,7 +609,7 @@ class MainWindow(QMainWindow):
 
         self.tbl_ordenes = QTableWidget(0, 8)
         self.tbl_ordenes.setHorizontalHeaderLabels(
-            ["N°", "ESTADO", "MODELO", "CLIENTE", "UBICACIÓN", "FALLA", "PRECIO", "SALDO"]
+            ["N°", "ESTADO", "EQUIPO / MODELO", "CLIENTE", "UBICACIÓN", "FALLA", "PRECIO", "SALDO"]
         )
         _configurar_tabla(self.tbl_ordenes, stretch_col=5)
         self.tbl_ordenes.itemSelectionChanged.connect(self._cargar_orden_seleccionada)
@@ -513,7 +617,6 @@ class MainWindow(QMainWindow):
 
         lay.addWidget(tbl_card, 1)
 
-        # Barra inferior de acciones de la orden seleccionada (2 filas sin cortes)
         panel_accion = QFrame()
         panel_accion.setObjectName("SubBar")
         pa_lay = QVBoxLayout(panel_accion)
@@ -592,7 +695,7 @@ class MainWindow(QMainWindow):
         self.refrescar_ordenes()
 
     # ------------------------------------------
-    # 1. NUEVA ORDEN
+    # 1. NUEVA ORDEN (SUBCATEGORÍAS + PATRÓN DIBUJABLE)
     # ------------------------------------------
     def _build_nueva_orden_tab(self) -> QWidget:
         scroll = QScrollArea()
@@ -620,19 +723,52 @@ class MainWindow(QMainWindow):
 
         self.no_cat = QComboBox()
         self.no_cat.addItems(CATEGORIAS_EQUIPO)
+        self.no_cat.currentTextChanged.connect(self._actualizar_subcategorias_marca)
 
-        self.no_marca = QLineEdit()
-        self.no_marca.setPlaceholderText("Ej. Samsung, Apple, Asus")
+        self.no_marca = QComboBox()
+        self.no_marca.setEditable(True)
+        self.no_marca.setInsertPolicy(QComboBox.NoInsert)
+
         self.no_modelo = QLineEdit()
-        self.no_modelo.setPlaceholderText("Ej. Galaxy A54, Vivobook Go 15")
+        self.no_modelo.setPlaceholderText("Ej. PlayStation 4 Slim, Xbox Series S, Galaxy A54")
         self.no_color = QLineEdit()
-        self.no_color.setPlaceholderText("Ej. Negro, Plata")
+        self.no_color.setPlaceholderText("Ej. Negro, Blanco")
 
         self.no_imei = QLineEdit()
+        self.no_imei.setPlaceholderText("IMEI o número de serie")
         self.no_pin = QLineEdit()
-        self.no_patron = QComboBox()
-        self.no_patron.addItems(PATRONES_SUGERIDOS)
-        self.no_patron.setEditable(True)
+        self.no_pin.setPlaceholderText("PIN o contraseña escrita")
+
+        # Lienzo manual para dibujar el patrón
+        patron_box = QFrame()
+        patron_box.setObjectName("SubBar")
+        pb_lay = QHBoxLayout(patron_box)
+        pb_lay.setContentsMargins(12, 10, 12, 10)
+        pb_lay.setSpacing(14)
+
+        self.patron_canvas = PatronCanvasWidget()
+        self.patron_canvas.patron_cambiado.connect(self._on_patron_dibujado)
+        pb_lay.addWidget(self.patron_canvas)
+
+        patron_info = QVBoxLayout()
+        patron_info.setSpacing(8)
+        lbl_p_ayuda = QLabel("Dibuja el patrón conectando los puntos con el mouse:")
+        lbl_p_ayuda.setObjectName("CardSub")
+        lbl_p_ayuda.setWordWrap(True)
+
+        self.lbl_patron_valor = QLabel("Patrón: Sin patrón")
+        self.lbl_patron_valor.setObjectName("FolioBadge")
+        self.lbl_patron_valor.setWordWrap(True)
+
+        btn_limpiar_patron = QPushButton("Borrar patrón")
+        btn_limpiar_patron.setMinimumWidth(130)
+        btn_limpiar_patron.clicked.connect(self.patron_canvas.limpiar_patron)
+
+        patron_info.addWidget(lbl_p_ayuda)
+        patron_info.addWidget(self.lbl_patron_valor)
+        patron_info.addWidget(btn_limpiar_patron, alignment=Qt.AlignLeft)
+        patron_info.addStretch()
+        pb_lay.addLayout(patron_info, 1)
 
         self.no_estado_fisico = QLineEdit()
         self.no_estado_fisico.setPlaceholderText("Observaciones físicas al recibir")
@@ -671,12 +807,12 @@ class MainWindow(QMainWindow):
         form.addRow("Cliente *:", self.no_cliente)
         form.addRow("Teléfono / WA *:", self.no_tel)
         form.addRow("Categoría:", self.no_cat)
-        form.addRow("Marca *:", self.no_marca)
-        form.addRow("Modelo *:", self.no_modelo)
+        form.addRow("Marca / Consola *:", self.no_marca)
+        form.addRow("Modelo / Versión *:", self.no_modelo)
         form.addRow("Color:", self.no_color)
         form.addRow("IMEI / Serie:", self.no_imei)
         form.addRow("PIN / Contraseña:", self.no_pin)
-        form.addRow("Patrón:", self.no_patron)
+        form.addRow("Patrón (dibujo):", patron_box)
         form.addRow("Estado físico:", self.no_estado_fisico)
         form.addRow("Servicio del catálogo:", self.no_servicio_cat)
         form.addRow("Falla reportada *:", self.no_falla)
@@ -705,8 +841,30 @@ class MainWindow(QMainWindow):
         btns.addWidget(btn_guardar)
         lay.addLayout(btns)
 
+        self._actualizar_subcategorias_marca(self.no_cat.currentText())
+
         scroll.setWidget(w)
         return scroll
+
+    def _on_patron_dibujado(self, texto_patron: str):
+        self.lbl_patron_valor.setText(f"Patrón: {texto_patron}")
+
+    def _actualizar_subcategorias_marca(self, categoria: str):
+        if not hasattr(self, "no_marca"):
+            return
+        opciones = SUBCATEGORIAS_POR_CATEGORIA.get(categoria, ["Otra marca"])
+        self.no_marca.blockSignals(True)
+        self.no_marca.clear()
+        self.no_marca.addItems(opciones)
+        self.no_marca.setCurrentIndex(0)
+        self.no_marca.blockSignals(False)
+
+        if categoria == "Consolas":
+            self.no_modelo.setPlaceholderText("Ej. Slim 1TB, Fat, Series S, Switch v2")
+        elif categoria == "Celulares":
+            self.no_modelo.setPlaceholderText("Ej. Galaxy A54, iPhone 13, Redmi Note 12")
+        else:
+            self.no_modelo.setPlaceholderText("Modelo o versión del equipo")
 
     def _cargar_combos_orden(self):
         if not hasattr(self, "no_servicio_cat"):
@@ -737,9 +895,15 @@ class MainWindow(QMainWindow):
         s = self.no_servicio_cat.currentData()
         if not s:
             return
-        self.no_cat.setCurrentText(s.get("categoria", "Celulares"))
-        if s.get("marca") and not self.no_marca.text().strip():
-            self.no_marca.setText(s["marca"])
+        cat = s.get("categoria", "Celulares")
+        self.no_cat.setCurrentText(cat)
+        self._actualizar_subcategorias_marca(cat)
+        if s.get("marca"):
+            idx = self.no_marca.findText(s["marca"])
+            if idx >= 0:
+                self.no_marca.setCurrentIndex(idx)
+            else:
+                self.no_marca.setCurrentText(s["marca"])
         if s.get("modelo") and not self.no_modelo.text().strip():
             self.no_modelo.setText(s["modelo"])
         self.no_falla.setText(s["nombre"])
@@ -754,7 +918,6 @@ class MainWindow(QMainWindow):
         for campo in (
             self.no_cliente,
             self.no_tel,
-            self.no_marca,
             self.no_modelo,
             self.no_color,
             self.no_imei,
@@ -763,6 +926,9 @@ class MainWindow(QMainWindow):
             self.no_falla,
         ):
             campo.clear()
+        self.no_cat.setCurrentIndex(0)
+        self._actualizar_subcategorias_marca(self.no_cat.currentText())
+        self.patron_canvas.limpiar_patron()
         self.no_notas.clear()
         self.no_costo_rep.setValue(0)
         self.no_costo_total.setValue(0)
@@ -770,15 +936,18 @@ class MainWindow(QMainWindow):
         self.no_servicio_cat.setCurrentIndex(0)
 
     def _guardar_nueva_orden(self):
+        marca_txt = self.no_marca.currentText().strip()
         if (
             not self.no_cliente.text().strip()
             or not self.no_tel.text().strip()
-            or not self.no_marca.text().strip()
+            or not marca_txt
             or not self.no_modelo.text().strip()
             or not self.no_falla.text().strip()
         ):
             QMessageBox.warning(
-                self, "Campos requeridos", "Completa cliente, teléfono, marca, modelo y falla."
+                self,
+                "Campos requeridos",
+                "Completa cliente, teléfono, marca/consola, modelo y falla.",
             )
             return
 
@@ -787,12 +956,12 @@ class MainWindow(QMainWindow):
             "cliente_nombre": self.no_cliente.text(),
             "cliente_tel": self.no_tel.text(),
             "categoria": self.no_cat.currentText(),
-            "marca": self.no_marca.text(),
+            "marca": marca_txt,
             "modelo": self.no_modelo.text(),
             "color": self.no_color.text(),
             "imei": self.no_imei.text(),
             "pin_pass": self.no_pin.text(),
-            "patron": self.no_patron.currentText(),
+            "patron": self.patron_canvas.obtener_texto_patron(),
             "estado_fisico": self.no_estado_fisico.text(),
             "falla": self.no_falla.text(),
             "servicio_nombre": s_cat["nombre"] if s_cat else "",
@@ -841,11 +1010,11 @@ class MainWindow(QMainWindow):
         self.tbl_ordenes.setRowCount(0)
         for idx, o in enumerate(ordenes):
             self.tbl_ordenes.insertRow(idx)
-            modelo_txt = f"{o.get('marca', '')} {o.get('modelo', '')}".strip()
+            equipo_txt = f"{o.get('marca', '')} {o.get('modelo', '')}".strip()
             vals = [
                 f"#{int(o['folio']):04d}",
                 o.get("estatus", ""),
-                modelo_txt,
+                equipo_txt,
                 o.get("cliente_nombre", ""),
                 o.get("ubicacion", ""),
                 o.get("falla", ""),
@@ -1022,11 +1191,11 @@ class MainWindow(QMainWindow):
         self.s_cat.setMinimumWidth(125)
         self.s_cat.addItems(CATEGORIAS_EQUIPO)
         self.s_marca = QLineEdit()
-        self.s_marca.setPlaceholderText("Marca")
+        self.s_marca.setPlaceholderText("Marca / Consola")
         self.s_modelo = QLineEdit()
         self.s_modelo.setPlaceholderText("Modelo")
         self.s_nombre = QLineEdit()
-        self.s_nombre.setPlaceholderText("Servicio (ej. Cambio de pantalla)")
+        self.s_nombre.setPlaceholderText("Servicio (ej. Cambio de pantalla / Limpieza)")
         self.s_precio = QDoubleSpinBox()
         self.s_precio.setRange(0, 999999)
         self.s_precio.setDecimals(2)
@@ -1303,9 +1472,11 @@ class MainWindow(QMainWindow):
         self.config.set("identidad", "logo_personalizado", self.cfg_logo.text().strip())
         self.config.save()
 
+        self._aplicar_icono_abcell()
         self.aplicar_tema()
         self.lbl_brand_sidebar.setText(self.cfg_nombre.text().strip() or "ABCell")
-        self._cargar_logo_widget(self.lbl_logo_sidebar, 34)
+        self._cargar_logo_widget(self.lbl_logo_sidebar, 38)
+        self._cargar_logo_widget(self.lbl_topbar_logo, 26)
         QMessageBox.information(self, "Guardado", "La configuración se guardó correctamente.")
         self.refrescar_todo()
 
