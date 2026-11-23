@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import json
 import os
 
@@ -55,6 +57,10 @@ DEFAULT_CONFIG = {
     "apariencia": {
         "tema": "Oscuro",
     },
+    "seguridad": {
+        "salt": "",
+        "hash": "",
+    },
 }
 
 
@@ -98,3 +104,31 @@ class ConfigManager:
 
     def set(self, seccion: str, clave: str, valor):
         self.data.setdefault(seccion, {})[clave] = valor
+
+    # --- Código maestro (solo se guarda un hash, nunca el texto) ---
+    @staticmethod
+    def _hash_codigo(codigo: str, salt_hex: str) -> str:
+        clave = hashlib.pbkdf2_hmac(
+            "sha256", codigo.encode("utf-8"), bytes.fromhex(salt_hex), 120000
+        )
+        return clave.hex()
+
+    def tiene_codigo_maestro(self) -> bool:
+        return bool(self.get("seguridad", "hash", "")) and bool(
+            self.get("seguridad", "salt", "")
+        )
+
+    def definir_codigo_maestro(self, codigo: str):
+        salt = os.urandom(16).hex()
+        self.set("seguridad", "salt", salt)
+        self.set("seguridad", "hash", self._hash_codigo(codigo, salt))
+
+    def verificar_codigo_maestro(self, codigo: str) -> bool:
+        if not self.tiene_codigo_maestro():
+            return False
+        try:
+            salt = self.get("seguridad", "salt", "")
+            esperado = self.get("seguridad", "hash", "")
+            return hmac.compare_digest(self._hash_codigo(codigo, salt), esperado)
+        except Exception:
+            return False
