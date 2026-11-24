@@ -311,6 +311,87 @@ class WorkshopService:
         )
         return nombre_limpio
 
+    def actualizar_servicio(self, servicio_id: int, datos: dict) -> bool:
+        """Actualiza un servicio del catálogo. Devuelve False si no existe."""
+        servicio_id = int(servicio_id)
+        existe = self.db.consultar_uno(
+            "SELECT id FROM servicios_catalogo WHERE id = ?", (servicio_id,)
+        )
+        if not existe:
+            return False
+        self.db.ejecutar(
+            """
+            UPDATE servicios_catalogo
+            SET categoria = ?, marca = ?, modelo = ?, nombre = ?, precio = ?
+            WHERE id = ?
+            """,
+            (
+                str(datos.get("categoria") or "Celulares").strip(),
+                str(datos.get("marca") or "").strip(),
+                str(datos.get("modelo") or "").strip(),
+                str(datos.get("nombre") or "").strip(),
+                float(datos.get("precio") or 0.0),
+                servicio_id,
+            ),
+        )
+        return True
+
+    def eliminar_servicio(self, servicio_id: int) -> bool:
+        """Elimina un servicio del catálogo. Devuelve False si no existe."""
+        servicio_id = int(servicio_id)
+        existe = self.db.consultar_uno(
+            "SELECT id FROM servicios_catalogo WHERE id = ?", (servicio_id,)
+        )
+        if not existe:
+            return False
+        self.db.ejecutar("DELETE FROM servicios_catalogo WHERE id = ?", (servicio_id,))
+        return True
+
+    def actualizar_ubicacion(
+        self, ubicacion_id: int, nombre: str, tipo: str = "General", descripcion: str = ""
+    ) -> bool:
+        """Actualiza una ubicación. Devuelve False si no existe o el nombre ya está en uso."""
+        ubicacion_id = int(ubicacion_id)
+        nombre_limpio = str(nombre or "").strip()
+        if not nombre_limpio:
+            return False
+        existe = self.db.consultar_uno(
+            "SELECT id FROM ubicaciones WHERE id = ?", (ubicacion_id,)
+        )
+        if not existe:
+            return False
+        duplicada = self.db.consultar_uno(
+            "SELECT id FROM ubicaciones WHERE nombre = ? AND id != ?",
+            (nombre_limpio, ubicacion_id),
+        )
+        if duplicada:
+            return False
+        self.db.ejecutar(
+            """
+            UPDATE ubicaciones
+            SET nombre = ?, tipo = ?, descripcion = ?
+            WHERE id = ?
+            """,
+            (
+                nombre_limpio,
+                str(tipo or "General").strip(),
+                str(descripcion or "").strip(),
+                ubicacion_id,
+            ),
+        )
+        return True
+
+    def eliminar_ubicacion(self, ubicacion_id: int) -> bool:
+        """Elimina una ubicación. Devuelve False si no existe."""
+        ubicacion_id = int(ubicacion_id)
+        existe = self.db.consultar_uno(
+            "SELECT id FROM ubicaciones WHERE id = ?", (ubicacion_id,)
+        )
+        if not existe:
+            return False
+        self.db.ejecutar("DELETE FROM ubicaciones WHERE id = ?", (ubicacion_id,))
+        return True
+
     def generar_reporte_financiero(self) -> dict:
         hoy_str = datetime.now().strftime("%Y-%m-%d")
         mes_str = datetime.now().strftime("%Y-%m")

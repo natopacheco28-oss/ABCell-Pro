@@ -164,6 +164,21 @@ except Exception:
         def guardar_ubicacion(self, *args, **kwargs):
             return None
 
+        def eliminar_orden(self, *args, **kwargs):
+            return False
+
+        def actualizar_servicio(self, *args, **kwargs):
+            return False
+
+        def eliminar_servicio(self, *args, **kwargs):
+            return False
+
+        def actualizar_ubicacion(self, *args, **kwargs):
+            return False
+
+        def eliminar_ubicacion(self, *args, **kwargs):
+            return False
+
 try:
     from integrations.whatsapp_center import WhatsAppCenter
 except Exception:
@@ -1406,11 +1421,12 @@ class MainWindow(QMainWindow):
             row_s.addWidget(widget)
         l_serv.addLayout(row_s)
 
-        self.tbl_servicios = QTableWidget(0, 5)
+        self.tbl_servicios = QTableWidget(0, 6)
         self.tbl_servicios.setHorizontalHeaderLabels(
-            ["ID", "CATEGORÍA", "MARCA / MODELO", "SERVICIO", "PRECIO"]
+            ["ID", "CATEGORÍA", "MARCA / MODELO", "SERVICIO", "PRECIO", "ACCIONES"]
         )
         _configurar_tabla(self.tbl_servicios, stretch_col=3)
+        self.tbl_servicios.setColumnWidth(5, 170)
         l_serv.addWidget(self.tbl_servicios, 1)
 
         p_ub = QWidget()
@@ -1431,9 +1447,12 @@ class MainWindow(QMainWindow):
             row_u.addWidget(widget)
         l_ub.addLayout(row_u)
 
-        self.tbl_ubicaciones = QTableWidget(0, 4)
-        self.tbl_ubicaciones.setHorizontalHeaderLabels(["ID", "NOMBRE", "TIPO", "DESCRIPCIÓN"])
+        self.tbl_ubicaciones = QTableWidget(0, 5)
+        self.tbl_ubicaciones.setHorizontalHeaderLabels(
+            ["ID", "NOMBRE", "TIPO", "DESCRIPCIÓN", "ACCIONES"]
+        )
         _configurar_tabla(self.tbl_ubicaciones, stretch_col=3)
+        self.tbl_ubicaciones.setColumnWidth(4, 170)
         l_ub.addWidget(self.tbl_ubicaciones, 1)
 
         tabs.addTab(p_serv, "Servicios")
@@ -1468,6 +1487,28 @@ class MainWindow(QMainWindow):
         self.u_desc.clear()
         self.refrescar_catalogo_ubicaciones()
 
+    def _crear_botones_accion(
+        self, al_editar, al_eliminar
+    ) -> QWidget:
+        """Crea el widget con botones Editar / Eliminar para una fila del catálogo."""
+        cont = QWidget()
+        lay = QHBoxLayout(cont)
+        lay.setContentsMargins(4, 2, 4, 2)
+        lay.setSpacing(6)
+        btn_editar = QPushButton("Editar")
+        btn_editar.setMinimumWidth(72)
+        btn_editar.setMaximumHeight(30)
+        btn_editar.clicked.connect(al_editar)
+        btn_eliminar = QPushButton("Eliminar")
+        btn_eliminar.setMinimumWidth(78)
+        btn_eliminar.setMaximumHeight(30)
+        btn_eliminar.setStyleSheet(ESTILO_BOTON_PELIGRO)
+        btn_eliminar.clicked.connect(al_eliminar)
+        lay.addWidget(btn_editar)
+        lay.addWidget(btn_eliminar)
+        lay.addStretch()
+        return cont
+
     def refrescar_catalogo_ubicaciones(self):
         if not hasattr(self, "tbl_servicios"):
             return
@@ -1486,6 +1527,15 @@ class MainWindow(QMainWindow):
             ]
             for c, v in enumerate(vals):
                 self.tbl_servicios.setItem(i, c, QTableWidgetItem(v))
+            sid = int(s["id"])
+            self.tbl_servicios.setCellWidget(
+                i,
+                5,
+                self._crear_botones_accion(
+                    lambda checked=False, _id=sid: self._editar_servicio(_id),
+                    lambda checked=False, _id=sid: self._eliminar_servicio(_id),
+                ),
+            )
 
         ubicaciones = self.service.listar_ubicaciones(solo_activas=False)
         self.tbl_ubicaciones.setRowCount(0)
@@ -1494,8 +1544,205 @@ class MainWindow(QMainWindow):
             vals = [str(u["id"]), u.get("nombre", ""), u.get("tipo", ""), u.get("descripcion", "")]
             for c, v in enumerate(vals):
                 self.tbl_ubicaciones.setItem(i, c, QTableWidgetItem(v))
+            uid = int(u["id"])
+            self.tbl_ubicaciones.setCellWidget(
+                i,
+                4,
+                self._crear_botones_accion(
+                    lambda checked=False, _id=uid: self._editar_ubicacion(_id),
+                    lambda checked=False, _id=uid: self._eliminar_ubicacion(_id),
+                ),
+            )
 
         self._cargar_combos_orden()
+
+    def _obtener_servicio_por_id(self, servicio_id: int) -> dict | None:
+        for s in self.service.listar_servicios():
+            if int(s.get("id") or 0) == int(servicio_id):
+                return s
+        return None
+
+    def _obtener_ubicacion_por_id(self, ubicacion_id: int) -> dict | None:
+        for u in self.service.listar_ubicaciones(solo_activas=False):
+            if int(u.get("id") or 0) == int(ubicacion_id):
+                return u
+        return None
+
+    def _editar_servicio(self, servicio_id: int):
+        s = self._obtener_servicio_por_id(servicio_id)
+        if not s:
+            QMessageBox.warning(self, "No encontrado", "El servicio ya no existe.")
+            return
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Editar servicio")
+        dlg.setMinimumWidth(420)
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(20, 16, 20, 16)
+        lay.setSpacing(10)
+
+        form = QFormLayout()
+        form.setSpacing(8)
+
+        cmb_cat = QComboBox()
+        cmb_cat.addItems(CATEGORIAS_EQUIPO)
+        cmb_cat.setCurrentText(s.get("categoria", "Celulares"))
+        txt_marca = QLineEdit(s.get("marca", ""))
+        txt_modelo = QLineEdit(s.get("modelo", ""))
+        txt_nombre = QLineEdit(s.get("nombre", ""))
+        spn_precio = QDoubleSpinBox()
+        spn_precio.setRange(0, 999999)
+        spn_precio.setDecimals(2)
+        spn_precio.setValue(float(s.get("precio") or 0.0))
+
+        form.addRow("Categoría:", cmb_cat)
+        form.addRow("Marca / Consola:", txt_marca)
+        form.addRow("Modelo:", txt_modelo)
+        form.addRow("Servicio:", txt_nombre)
+        form.addRow("Precio:", spn_precio)
+        lay.addLayout(form)
+
+        fila_btns = QHBoxLayout()
+        btn_cancelar = QPushButton("Cancelar")
+        btn_cancelar.clicked.connect(dlg.reject)
+        btn_guardar = QPushButton("Guardar cambios")
+        btn_guardar.setObjectName("PrimaryBtn")
+        btn_guardar.setMinimumWidth(140)
+        fila_btns.addStretch()
+        fila_btns.addWidget(btn_cancelar)
+        fila_btns.addWidget(btn_guardar)
+        lay.addLayout(fila_btns)
+
+        def _guardar():
+            if not txt_nombre.text().strip():
+                QMessageBox.warning(self, "Falta el servicio", "Escribe el nombre del servicio.")
+                return
+            ok = self.service.actualizar_servicio(
+                servicio_id,
+                {
+                    "categoria": cmb_cat.currentText(),
+                    "marca": txt_marca.text(),
+                    "modelo": txt_modelo.text(),
+                    "nombre": txt_nombre.text(),
+                    "precio": spn_precio.value(),
+                },
+            )
+            if not ok:
+                QMessageBox.warning(self, "No se guardó", "El servicio ya no existe.")
+                return
+            dlg.accept()
+            self.refrescar_catalogo_ubicaciones()
+            QMessageBox.information(self, "Guardado", "Servicio actualizado.")
+
+        btn_guardar.clicked.connect(_guardar)
+        dlg.exec()
+
+    def _eliminar_servicio(self, servicio_id: int):
+        s = self._obtener_servicio_por_id(servicio_id)
+        if not s:
+            QMessageBox.warning(self, "No encontrado", "El servicio ya no existe.")
+            return
+        resp = QMessageBox.question(
+            self,
+            "Eliminar servicio",
+            f"¿Eliminar el servicio '{s.get('nombre', '')}' "
+            f"({s.get('categoria', '')} {s.get('marca', '')})?\n\n"
+            "Ya no aparecerá en el catálogo ni en las nuevas órdenes.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if resp != QMessageBox.StandardButton.Yes:
+            return
+        if not self._autorizar_con_codigo("eliminar el servicio del catálogo"):
+            return
+        if self.service.eliminar_servicio(servicio_id):
+            self.refrescar_catalogo_ubicaciones()
+            QMessageBox.information(self, "Eliminado", "Servicio eliminado del catálogo.")
+        else:
+            QMessageBox.warning(self, "No se eliminó", "El servicio ya no existe.")
+
+    def _editar_ubicacion(self, ubicacion_id: int):
+        u = self._obtener_ubicacion_por_id(ubicacion_id)
+        if not u:
+            QMessageBox.warning(self, "No encontrada", "La ubicación ya no existe.")
+            return
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Editar ubicación")
+        dlg.setMinimumWidth(420)
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(20, 16, 20, 16)
+        lay.setSpacing(10)
+
+        form = QFormLayout()
+        form.setSpacing(8)
+
+        txt_nombre = QLineEdit(u.get("nombre", ""))
+        txt_tipo = QLineEdit(u.get("tipo", "General"))
+        txt_desc = QLineEdit(u.get("descripcion", ""))
+
+        form.addRow("Nombre:", txt_nombre)
+        form.addRow("Tipo:", txt_tipo)
+        form.addRow("Descripción:", txt_desc)
+        lay.addLayout(form)
+
+        fila_btns = QHBoxLayout()
+        btn_cancelar = QPushButton("Cancelar")
+        btn_cancelar.clicked.connect(dlg.reject)
+        btn_guardar = QPushButton("Guardar cambios")
+        btn_guardar.setObjectName("PrimaryBtn")
+        btn_guardar.setMinimumWidth(140)
+        fila_btns.addStretch()
+        fila_btns.addWidget(btn_cancelar)
+        fila_btns.addWidget(btn_guardar)
+        lay.addLayout(fila_btns)
+
+        def _guardar():
+            if not txt_nombre.text().strip():
+                QMessageBox.warning(self, "Falta el nombre", "Escribe el nombre de la ubicación.")
+                return
+            ok = self.service.actualizar_ubicacion(
+                ubicacion_id,
+                txt_nombre.text(),
+                txt_tipo.text() or "General",
+                txt_desc.text(),
+            )
+            if not ok:
+                QMessageBox.warning(
+                    self,
+                    "No se guardó",
+                    "Ya existe otra ubicación con ese nombre, o la ubicación ya no existe.",
+                )
+                return
+            dlg.accept()
+            self.refrescar_catalogo_ubicaciones()
+            QMessageBox.information(self, "Guardado", "Ubicación actualizada.")
+
+        btn_guardar.clicked.connect(_guardar)
+        dlg.exec()
+
+    def _eliminar_ubicacion(self, ubicacion_id: int):
+        u = self._obtener_ubicacion_por_id(ubicacion_id)
+        if not u:
+            QMessageBox.warning(self, "No encontrada", "La ubicación ya no existe.")
+            return
+        resp = QMessageBox.question(
+            self,
+            "Eliminar ubicación",
+            f"¿Eliminar la ubicación '{u.get('nombre', '')}'?\n\n"
+            "Ya no aparecerá en el selector de ubicaciones de las órdenes.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if resp != QMessageBox.StandardButton.Yes:
+            return
+        if not self._autorizar_con_codigo("eliminar la ubicación"):
+            return
+        if self.service.eliminar_ubicacion(ubicacion_id):
+            self.refrescar_catalogo_ubicaciones()
+            QMessageBox.information(self, "Eliminada", "Ubicación eliminada.")
+        else:
+            QMessageBox.warning(self, "No se eliminó", "La ubicación ya no existe.")
 
     # ------------------------------------------
     # 4. ESTADÍSTICAS Y CAJA
