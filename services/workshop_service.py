@@ -204,6 +204,55 @@ class WorkshopService:
         self.db.ejecutar("DELETE FROM ordenes WHERE folio = ?", (folio,))
         return True
 
+    def actualizar_orden_datos(self, folio: int, datos: dict) -> bool:
+        """Edita los datos generales de una orden ya registrada.
+
+        Recalcula el saldo como costo_total - anticipo (el anticipo y el
+        historial de pagos no se tocan). Devuelve False si no existe.
+        """
+        folio = int(folio)
+        orden = self.obtener_orden(folio)
+        if not orden:
+            return False
+        costo_rep = float(datos.get("costo_repuesto", orden.get("costo_repuesto") or 0.0))
+        costo_total = float(datos.get("costo_total", orden.get("costo_total") or 0.0))
+        anticipo = float(orden.get("anticipo") or 0.0)
+        saldo = max(0.0, costo_total - anticipo)
+        self.db.ejecutar(
+            """
+            UPDATE ordenes
+            SET cliente_nombre = ?, cliente_tel = ?, categoria = ?, marca = ?,
+                modelo = ?, color = ?, imei = ?, pin_pass = ?, patron = ?,
+                estado_fisico = ?, falla = ?, servicio_nombre = ?, ubicacion = ?,
+                estatus = ?, costo_repuesto = ?, costo_total = ?, saldo = ?,
+                notas_internas = ?, fecha_actualizacion = ?
+            WHERE folio = ?
+            """,
+            (
+                str(datos.get("cliente_nombre", orden.get("cliente_nombre", ""))).strip(),
+                str(datos.get("cliente_tel", orden.get("cliente_tel", ""))).strip(),
+                str(datos.get("categoria", orden.get("categoria", "Celulares"))).strip(),
+                str(datos.get("marca", orden.get("marca", ""))).strip(),
+                str(datos.get("modelo", orden.get("modelo", ""))).strip(),
+                str(datos.get("color", orden.get("color", ""))).strip(),
+                str(datos.get("imei", orden.get("imei", ""))).strip(),
+                str(datos.get("pin_pass", orden.get("pin_pass", ""))).strip(),
+                str(datos.get("patron", orden.get("patron", "Sin patrón"))).strip(),
+                str(datos.get("estado_fisico", orden.get("estado_fisico", ""))).strip(),
+                str(datos.get("falla", orden.get("falla", ""))).strip(),
+                str(datos.get("servicio_nombre", orden.get("servicio_nombre", ""))).strip(),
+                str(datos.get("ubicacion", orden.get("ubicacion", "Sin asignar"))).strip(),
+                str(datos.get("estatus", orden.get("estatus", "Recibido"))).strip(),
+                costo_rep,
+                costo_total,
+                saldo,
+                str(datos.get("notas_internas", orden.get("notas_internas", ""))).strip(),
+                self._ahora_str(),
+                folio,
+            ),
+        )
+        return True
+
     def obtener_metricas_dashboard(self, categoria: str = "Todas") -> dict:
         ordenes = self.listar_ordenes(categoria=categoria)
         cerrados = {"Entregado", "Cancelado"}

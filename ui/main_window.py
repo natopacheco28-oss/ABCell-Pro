@@ -13,6 +13,7 @@ from PySide6.QtGui import (
     QShortcut,
 )
 from PySide6.QtWidgets import (
+    QApplication,
     QComboBox,
     QDialog,
     QDoubleSpinBox,
@@ -173,6 +174,9 @@ except Exception:
             return None
 
         def eliminar_orden(self, *args, **kwargs):
+            return False
+
+        def actualizar_orden_datos(self, *args, **kwargs):
             return False
 
         def actualizar_servicio(self, *args, **kwargs):
@@ -560,11 +564,10 @@ class MainWindow(QMainWindow):
         secciones = [
             ("Órdenes de trabajo", 0),
             ("Nueva orden", 1),
-            ("Clientes (Historial)", 2),
-            ("Catálogo y Ubicaciones", 3),
-            ("Estadísticas y Caja", 4),
-            ("WhatsApp y Tickets", 5),
-            ("Configuración de taller", 6),
+            ("Catálogo y Ubicaciones", 2),
+            ("Estadísticas y Caja", 3),
+            ("WhatsApp y Tickets", 4),
+            ("Configuración de taller", 5),
         ]
         for texto, idx in secciones:
             btn = QPushButton(texto)
@@ -588,7 +591,6 @@ class MainWindow(QMainWindow):
 
         self.stack.addWidget(self._build_taller_ordenes_tab())
         self.stack.addWidget(self._build_nueva_orden_tab())
-        self.stack.addWidget(self._build_clientes_tab())
         self.stack.addWidget(self._build_catalogo_ubicaciones_tab())
         self.stack.addWidget(self._build_reportes_tab())
         self.stack.addWidget(self._build_wa_tickets_tab())
@@ -798,6 +800,11 @@ class MainWindow(QMainWindow):
         btn_act_orden.setMinimumWidth(190)
         btn_act_orden.clicked.connect(self._actualizar_orden_sel)
         f1.addWidget(btn_act_orden)
+
+        btn_editar_orden = QPushButton("Editar orden")
+        btn_editar_orden.setMinimumWidth(125)
+        btn_editar_orden.clicked.connect(self._editar_orden_sel)
+        f1.addWidget(btn_editar_orden)
         pa_lay.addLayout(f1)
 
         f2 = QHBoxLayout()
@@ -828,15 +835,10 @@ class MainWindow(QMainWindow):
         btn_ticket.clicked.connect(self._imprimir_orden_sel)
         f2.addWidget(btn_ticket)
 
-        btn_img = QPushButton("Imagen ticket")
+        btn_img = QPushButton("Ticket digital")
         btn_img.setMinimumWidth(125)
         btn_img.clicked.connect(self._generar_imagen_ticket_sel)
         f2.addWidget(btn_img)
-
-        btn_wa = QPushButton("WhatsApp")
-        btn_wa.setMinimumWidth(120)
-        btn_wa.clicked.connect(self._enviar_wa_orden_sel)
-        f2.addWidget(btn_wa)
 
         btn_eliminar = QPushButton("Eliminar orden")
         btn_eliminar.setMinimumWidth(130)
@@ -1255,6 +1257,169 @@ class MainWindow(QMainWindow):
         self.refrescar_ordenes()
         QMessageBox.information(self, "Actualizado", f"Orden #{folio:04d} actualizada.")
 
+    def _editar_orden_sel(self):
+        folio = self._folio_seleccionado()
+        if not folio:
+            QMessageBox.information(self, "Selecciona orden", "Selecciona una orden de la tabla.")
+            return
+        o = self.service.obtener_orden(folio)
+        if not o:
+            return
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"Editar orden #{folio:04d}")
+        dlg.setMinimumWidth(480)
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(20, 16, 20, 16)
+        lay.setSpacing(10)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setMinimumHeight(480)
+        form_w = QWidget()
+        form = QFormLayout(form_w)
+        form.setSpacing(8)
+
+        txt_cliente = QLineEdit(o.get("cliente_nombre", ""))
+        txt_tel = QLineEdit(o.get("cliente_tel", ""))
+        cmb_cat = QComboBox()
+        cmb_cat.addItems(CATEGORIAS_EQUIPO)
+        cmb_cat.setCurrentText(o.get("categoria", "Celulares"))
+        cmb_marca = QComboBox()
+        cmb_marca.setEditable(True)
+        cmb_marca.setInsertPolicy(QComboBox.NoInsert)
+        txt_modelo = QLineEdit(o.get("modelo", ""))
+        txt_color = QLineEdit(o.get("color", ""))
+        txt_imei = QLineEdit(o.get("imei", ""))
+        txt_pin = QLineEdit(o.get("pin_pass", ""))
+        txt_patron = QLineEdit(o.get("patron", "Sin patrón"))
+        txt_patron.setPlaceholderText("Ej. 1 -> 2 -> 3 (o Sin patrón)")
+        txt_estado = QLineEdit(o.get("estado_fisico", ""))
+        txt_falla = QLineEdit(o.get("falla", ""))
+        cmb_ubic = QComboBox()
+        for u in self.service.listar_ubicaciones(solo_activas=True):
+            cmb_ubic.addItem(u["nombre"])
+        if o.get("ubicacion") and cmb_ubic.findText(o.get("ubicacion", "")) < 0:
+            cmb_ubic.addItem(o.get("ubicacion", ""))
+        cmb_ubic.setCurrentText(o.get("ubicacion", "Sin asignar"))
+        cmb_estatus = QComboBox()
+        cmb_estatus.addItems(ESTATUS_ORDEN)
+        cmb_estatus.setCurrentText(o.get("estatus", "Recibido"))
+        spn_rep = QDoubleSpinBox()
+        spn_rep.setRange(0, 999999)
+        spn_rep.setDecimals(2)
+        spn_rep.setValue(float(o.get("costo_repuesto") or 0.0))
+        spn_total = QDoubleSpinBox()
+        spn_total.setRange(0, 999999)
+        spn_total.setDecimals(2)
+        spn_total.setValue(float(o.get("costo_total") or 0.0))
+        txt_notas = QPlainTextEdit(o.get("notas_internas", ""))
+        txt_notas.setMaximumHeight(60)
+
+        def _cargar_marcas(categoria: str):
+            opciones = SUBCATEGORIAS_POR_CATEGORIA.get(categoria, ["Otra marca"])
+            cmb_marca.blockSignals(True)
+            cmb_marca.clear()
+            cmb_marca.addItems(opciones)
+            cmb_marca.blockSignals(False)
+            marca_actual = o.get("marca", "")
+            if marca_actual:
+                if cmb_marca.findText(marca_actual) >= 0:
+                    cmb_marca.setCurrentText(marca_actual)
+                else:
+                    cmb_marca.setCurrentText(marca_actual)
+
+        cmb_cat.currentTextChanged.connect(_cargar_marcas)
+        _cargar_marcas(cmb_cat.currentText())
+
+        form.addRow("Cliente *:", txt_cliente)
+        form.addRow("Teléfono / WA *:", txt_tel)
+        form.addRow("Categoría:", cmb_cat)
+        form.addRow("Marca / Consola *:", cmb_marca)
+        form.addRow("Modelo / Versión *:", txt_modelo)
+        form.addRow("Color:", txt_color)
+        form.addRow("IMEI / Serie:", txt_imei)
+        form.addRow("PIN / Contraseña:", txt_pin)
+        form.addRow("Patrón:", txt_patron)
+        form.addRow("Estado físico:", txt_estado)
+        form.addRow("Falla reportada *:", txt_falla)
+        form.addRow("Ubicación:", cmb_ubic)
+        form.addRow("Estatus:", cmb_estatus)
+        form.addRow("Costo repuesto:", spn_rep)
+        form.addRow("Costo total:", spn_total)
+        form.addRow("Notas internas:", txt_notas)
+        scroll.setWidget(form_w)
+        lay.addWidget(scroll, 1)
+
+        nota = QLabel(
+            "El saldo se recalcula solo (total menos anticipo ya registrado). "
+            "Los abonos ya hechos no se modifican."
+        )
+        nota.setObjectName("CardSub")
+        nota.setWordWrap(True)
+        lay.addWidget(nota)
+
+        fila_btns = QHBoxLayout()
+        btn_cancelar = QPushButton("Cancelar")
+        btn_cancelar.clicked.connect(dlg.reject)
+        btn_guardar = QPushButton("Guardar cambios")
+        btn_guardar.setObjectName("PrimaryBtn")
+        btn_guardar.setMinimumWidth(150)
+        fila_btns.addStretch()
+        fila_btns.addWidget(btn_cancelar)
+        fila_btns.addWidget(btn_guardar)
+        lay.addLayout(fila_btns)
+
+        def _guardar():
+            faltantes = []
+            if not txt_cliente.text().strip():
+                faltantes.append("Cliente")
+            if not txt_tel.text().strip():
+                faltantes.append("Teléfono / WA")
+            if not cmb_marca.currentText().strip():
+                faltantes.append("Marca / Consola")
+            if not txt_modelo.text().strip():
+                faltantes.append("Modelo / Versión")
+            if not txt_falla.text().strip():
+                faltantes.append("Falla reportada")
+            if faltantes:
+                QMessageBox.warning(
+                    self,
+                    "Campos requeridos",
+                    "Completa los siguientes campos: " + ", ".join(faltantes) + ".",
+                )
+                return
+            ok = self.service.actualizar_orden_datos(
+                folio,
+                {
+                    "cliente_nombre": txt_cliente.text(),
+                    "cliente_tel": txt_tel.text(),
+                    "categoria": cmb_cat.currentText(),
+                    "marca": cmb_marca.currentText(),
+                    "modelo": txt_modelo.text(),
+                    "color": txt_color.text(),
+                    "imei": txt_imei.text(),
+                    "pin_pass": txt_pin.text(),
+                    "patron": txt_patron.text() or "Sin patrón",
+                    "estado_fisico": txt_estado.text(),
+                    "falla": txt_falla.text(),
+                    "ubicacion": cmb_ubic.currentText() or "Sin asignar",
+                    "estatus": cmb_estatus.currentText(),
+                    "costo_repuesto": spn_rep.value(),
+                    "costo_total": spn_total.value(),
+                    "notas_internas": txt_notas.toPlainText(),
+                },
+            )
+            if not ok:
+                QMessageBox.warning(self, "No se guardó", "La orden ya no existe.")
+                return
+            dlg.accept()
+            self.refrescar_ordenes()
+            QMessageBox.information(self, "Guardado", f"Orden #{folio:04d} actualizada.")
+
+        btn_guardar.clicked.connect(_guardar)
+        dlg.exec()
+
     def _abonar_orden_sel(self):
         folio = self._folio_seleccionado()
         if not folio:
@@ -1316,7 +1481,7 @@ class MainWindow(QMainWindow):
     def _mostrar_dialogo_imagen_ticket(self, orden: dict, ruta: str):
         folio = int(orden.get("folio") or 0)
         dlg = QDialog(self)
-        dlg.setWindowTitle(f"Ticket en imagen — Folio #{folio:04d}")
+        dlg.setWindowTitle(f"Ticket digital — Folio #{folio:04d}")
         dlg.setMinimumWidth(520)
         lay = QVBoxLayout(dlg)
         lay.setContentsMargins(18, 14, 18, 14)
@@ -1324,7 +1489,8 @@ class MainWindow(QMainWindow):
 
         ayuda = QLabel(
             "Esta imagen está lista para enviar por WhatsApp. "
-            "Ábrela y adjúntala en el chat, o usa el botón de WhatsApp."
+            "Pulsa «Enviar por WhatsApp»: la imagen se copiará al portapapeles "
+            "y solo tendrás que pegarla con Ctrl+V en el chat."
         )
         ayuda.setObjectName("CardSub")
         ayuda.setWordWrap(True)
@@ -1365,7 +1531,7 @@ class MainWindow(QMainWindow):
         btn_wa = QPushButton("Enviar por WhatsApp")
         btn_wa.setObjectName("PrimaryBtn")
         btn_wa.setMinimumWidth(160)
-        btn_wa.clicked.connect(lambda: self._enviar_wa_desde_imagen(orden))
+        btn_wa.clicked.connect(lambda: self._enviar_wa_desde_imagen(orden, ruta))
         btn_cerrar = QPushButton("Cerrar")
         btn_cerrar.clicked.connect(dlg.accept)
         for b in (btn_abrir, btn_carpeta, btn_wa, btn_cerrar):
@@ -1373,7 +1539,12 @@ class MainWindow(QMainWindow):
         lay.addLayout(fila)
         dlg.exec()
 
-    def _enviar_wa_desde_imagen(self, orden: dict):
+    def _enviar_wa_desde_imagen(self, orden: dict, ruta: str = ""):
+        # Copia la imagen del ticket al portapapeles para pegarla en WhatsApp.
+        if ruta and os.path.exists(ruta):
+            pm = QPixmap(ruta)
+            if not pm.isNull():
+                QApplication.clipboard().setPixmap(pm)
         tipo = "listo" if orden.get("estatus") == "Listo para entregar" else "recibido"
         msg = self.wa.construir_mensaje(tipo, orden)
         url = self.wa.generar_url_wa(orden.get("cliente_tel", ""), msg)
@@ -1385,6 +1556,13 @@ class MainWindow(QMainWindow):
             msg,
         )
         webbrowser.open(url)
+        QMessageBox.information(
+            self,
+            "WhatsApp abierto",
+            "Se abrió el chat con el mensaje listo.\n\n"
+            "La imagen del ticket ya está copiada: pégala en el chat con Ctrl+V "
+            "(o con clic derecho → Pegar) y envíala.",
+        )
 
     def _autorizar_con_codigo(self, accion: str, obligatorio: bool = False) -> bool:
         if not self.config.tiene_codigo_maestro():
@@ -1452,52 +1630,7 @@ class MainWindow(QMainWindow):
         webbrowser.open(url)
 
     # ------------------------------------------
-    # 2. CLIENTES
-    # ------------------------------------------
-    def _build_clientes_tab(self) -> QWidget:
-        w = QWidget()
-        lay = QVBoxLayout(w)
-        lay.setContentsMargins(22, 16, 22, 16)
-        lay.setSpacing(12)
-
-        lbl = QLabel("Clientes (Historial)")
-        lbl.setObjectName("Title")
-        lay.addWidget(lbl)
-
-        self.txt_buscar_cli = QLineEdit()
-        self.txt_buscar_cli.setPlaceholderText("Buscar cliente por nombre, teléfono o correo...")
-        self.txt_buscar_cli.textChanged.connect(self.refrescar_clientes)
-        lay.addWidget(self.txt_buscar_cli)
-
-        self.tbl_clientes = QTableWidget(0, 6)
-        self.tbl_clientes.setHorizontalHeaderLabels(
-            ["ID", "NOMBRE", "TELÉFONO", "ÓRDENES", "TOTAL FACTURADO", "SALDO PENDIENTE"]
-        )
-        _configurar_tabla(self.tbl_clientes, stretch_col=1)
-        lay.addWidget(self.tbl_clientes, 1)
-        return w
-
-    def refrescar_clientes(self):
-        if not hasattr(self, "tbl_clientes"):
-            return
-        simbolo = self.config.get("regional", "simbolo_moneda", "$")
-        clientes = self.service.listar_clientes(self.txt_buscar_cli.text())
-        self.tbl_clientes.setRowCount(0)
-        for idx, cl in enumerate(clientes):
-            self.tbl_clientes.insertRow(idx)
-            vals = [
-                str(cl["id"]),
-                cl.get("nombre", ""),
-                cl.get("telefono", ""),
-                str(cl.get("total_ordenes", 0)),
-                f"{simbolo}{float(cl.get('total_facturado') or 0.0):,.2f}",
-                f"{simbolo}{float(cl.get('saldo_pendiente') or 0.0):,.2f}",
-            ]
-            for c_idx, val in enumerate(vals):
-                self.tbl_clientes.setItem(idx, c_idx, QTableWidgetItem(val))
-
-    # ------------------------------------------
-    # 3. CATÁLOGO Y UBICACIONES
+    # 2. CATÁLOGO Y UBICACIONES
     # ------------------------------------------
     def _build_catalogo_ubicaciones_tab(self) -> QWidget:
         w = QWidget()
@@ -2403,7 +2536,6 @@ class MainWindow(QMainWindow):
     def refrescar_todo(self):
         self._cargar_combos_orden()
         self.refrescar_ordenes()
-        self.refrescar_clientes()
         self.refrescar_catalogo_ubicaciones()
         self.refrescar_reportes()
         self.refrescar_wa()
