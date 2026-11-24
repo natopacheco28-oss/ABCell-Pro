@@ -815,7 +815,7 @@ class MainWindow(QMainWindow):
 
         f2.addStretch()
 
-        btn_ticket = QPushButton("Ticket 58mm")
+        btn_ticket = QPushButton("Imprimir ticket")
         btn_ticket.setMinimumWidth(125)
         btn_ticket.clicked.connect(self._imprimir_orden_sel)
         f2.addWidget(btn_ticket)
@@ -1268,7 +1268,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Impresión", msg)
         else:
             QMessageBox.warning(
-                self, "Ticket 58mm", f"{msg}\n\nVista previa:\n{generar_texto_ticket(o, self.config)}"
+                self, "Imprimir ticket", f"{msg}\n\nVista previa:\n{generar_texto_ticket(o, self.config)}"
             )
 
     def _autorizar_con_codigo(self, accion: str, obligatorio: bool = False) -> bool:
@@ -1863,7 +1863,39 @@ class MainWindow(QMainWindow):
         )
         self.cfg_tel = QLineEdit(self.config.get("contacto", "telefono", ""))
         self.cfg_dir = QLineEdit(self.config.get("contacto", "direccion", ""))
-        self.cfg_impresora = QLineEdit(self.config.get("notas", "impresora", ""))
+        # --- Gestor de impresoras (lista editable, reemplaza el campo simple) ---
+        self.cfg_impresoras: list[str] = self._cargar_impresoras_config()
+        self.cfg_printer_combo = QComboBox()
+        self._refrescar_combo_impresoras()
+
+        box_impresoras = QVBoxLayout()
+        box_impresoras.setSpacing(6)
+        box_impresoras.addWidget(self.cfg_printer_combo)
+
+        fila_imp = QHBoxLayout()
+        fila_imp.setSpacing(6)
+        btn_detectar_imp = QPushButton("Detectar impresoras")
+        btn_detectar_imp.clicked.connect(self._detectar_impresoras)
+        btn_agregar_imp = QPushButton("Agregar")
+        btn_agregar_imp.clicked.connect(self._agregar_impresora)
+        btn_editar_imp = QPushButton("Editar")
+        btn_editar_imp.clicked.connect(self._editar_impresora)
+        btn_eliminar_imp = QPushButton("Eliminar")
+        btn_eliminar_imp.setStyleSheet(ESTILO_BOTON_PELIGRO)
+        btn_eliminar_imp.clicked.connect(self._eliminar_impresora)
+        for b_imp in (btn_detectar_imp, btn_agregar_imp, btn_editar_imp, btn_eliminar_imp):
+            fila_imp.addWidget(b_imp)
+        fila_imp.addStretch()
+        box_impresoras.addLayout(fila_imp)
+
+        lbl_imp_ayuda = QLabel(
+            "Elige la impresora que usará el botón «Imprimir ticket». "
+            "Si la lista está vacía, se usará la impresora predeterminada de Windows."
+        )
+        lbl_imp_ayuda.setObjectName("CardSub")
+        lbl_imp_ayuda.setWordWrap(True)
+        box_impresoras.addWidget(lbl_imp_ayuda)
+
         self.cfg_tema = QComboBox()
         self.cfg_tema.addItems(["Claro", "Oscuro"])
         self.cfg_tema.setCurrentText("Claro" if self._es_tema_claro() else "Oscuro")
@@ -1879,7 +1911,7 @@ class MainWindow(QMainWindow):
         form.addRow("Nombre del negocio:", self.cfg_nombre)
         form.addRow("Teléfono / WhatsApp:", self.cfg_tel)
         form.addRow("Dirección:", self.cfg_dir)
-        form.addRow("Impresora 58mm:", self.cfg_impresora)
+        form.addRow("Impresoras:", box_impresoras)
         form.addRow("Tema visual (Claro / Oscuro):", self.cfg_tema)
         form.addRow("Logo personalizado:", row_logo)
 
@@ -2082,6 +2114,144 @@ class MainWindow(QMainWindow):
         self.config.save()
         self.aplicar_tema()
 
+    # --- Gestor de impresoras ---
+    def _cargar_impresoras_config(self) -> list[str]:
+        """Lee la lista de impresoras guardadas (migra el campo viejo si existe)."""
+        guardadas = self.config.get("notas", "impresoras", [])
+        lista: list[str] = []
+        if isinstance(guardadas, list):
+            for nombre in guardadas:
+                nombre = str(nombre or "").strip()
+                if nombre and nombre not in lista:
+                    lista.append(nombre)
+        vieja = str(self.config.get("notas", "impresora", "") or "").strip()
+        if vieja and vieja not in lista:
+            lista.append(vieja)
+        return lista
+
+    def _refrescar_combo_impresoras(self):
+        if not hasattr(self, "cfg_printer_combo"):
+            return
+        seleccion = (
+            self.cfg_printer_combo.currentText().strip()
+            if self.cfg_printer_combo.count()
+            else ""
+        )
+        self.cfg_printer_combo.blockSignals(True)
+        self.cfg_printer_combo.clear()
+        self.cfg_printer_combo.addItems(self.cfg_impresoras)
+        actual = str(self.config.get("notas", "impresora", "") or "").strip()
+        if actual in self.cfg_impresoras:
+            self.cfg_printer_combo.setCurrentText(actual)
+        elif seleccion in self.cfg_impresoras:
+            self.cfg_printer_combo.setCurrentText(seleccion)
+        self.cfg_printer_combo.blockSignals(False)
+
+    def _detectar_impresoras(self):
+        try:
+            import win32print
+        except Exception:
+            QMessageBox.information(
+                self,
+                "No disponible",
+                "La detección automática solo funciona en Windows.",
+            )
+            return
+        try:
+            # 2 = PRINTER_ENUM_LOCAL
+            encontradas = win32print.EnumPrinters(2)
+            nombres: list[str] = []
+            for _flags, _desc, nombre, _comentario in encontradas:
+                nombre = str(nombre or "").strip()
+                if nombre and nombre not in nombres:
+                    nombres.append(nombre)
+        except Exception as exc:
+            QMessageBox.warning(
+                self, "No se pudo detectar", f"No se pudieron listar las impresoras:\n{exc}"
+            )
+            return
+        if not nombres:
+            QMessageBox.information(
+                self, "Sin impresoras", "No se encontraron impresoras instaladas en Windows."
+            )
+            return
+        nuevas = 0
+        for nombre in nombres:
+            if nombre not in self.cfg_impresoras:
+                self.cfg_impresoras.append(nombre)
+                nuevas += 1
+        self._refrescar_combo_impresoras()
+        QMessageBox.information(
+            self,
+            "Impresoras detectadas",
+            f"Se encontraron {len(nombres)} impresora(s).\nNuevas agregadas a la lista: {nuevas}.",
+        )
+
+    def _agregar_impresora(self):
+        nombre, ok = QInputDialog.getText(
+            self,
+            "Agregar impresora",
+            "Nombre de la impresora (tal como aparece en Windows):",
+        )
+        if not ok:
+            return
+        nombre = nombre.strip()
+        if not nombre:
+            return
+        if nombre in self.cfg_impresoras:
+            QMessageBox.warning(self, "Ya existe", "Esa impresora ya está en la lista.")
+            return
+        self.cfg_impresoras.append(nombre)
+        self._refrescar_combo_impresoras()
+        self.cfg_printer_combo.setCurrentText(nombre)
+
+    def _editar_impresora(self):
+        actual = self.cfg_printer_combo.currentText().strip()
+        if not actual:
+            QMessageBox.information(
+                self, "Sin impresora", "Selecciona una impresora de la lista para editarla."
+            )
+            return
+        nombre, ok = QInputDialog.getText(
+            self, "Editar impresora", "Nombre de la impresora:", text=actual
+        )
+        if not ok:
+            return
+        nombre = nombre.strip()
+        if not nombre or nombre == actual:
+            return
+        if nombre in self.cfg_impresoras:
+            QMessageBox.warning(self, "Ya existe", "Ya hay otra impresora con ese nombre.")
+            return
+        idx = self.cfg_impresoras.index(actual)
+        self.cfg_impresoras[idx] = nombre
+        if str(self.config.get("notas", "impresora", "") or "").strip() == actual:
+            self.config.set("notas", "impresora", nombre)
+        self._refrescar_combo_impresoras()
+        self.cfg_printer_combo.setCurrentText(nombre)
+
+    def _eliminar_impresora(self):
+        actual = self.cfg_printer_combo.currentText().strip()
+        if not actual:
+            QMessageBox.information(
+                self, "Sin impresora", "Selecciona una impresora de la lista para eliminarla."
+            )
+            return
+        resp = QMessageBox.question(
+            self,
+            "Eliminar impresora",
+            f"¿Eliminar '{actual}' de la lista?\n\n"
+            "No se desinstala la impresora de Windows, solo se quita de esta lista.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if resp != QMessageBox.StandardButton.Yes:
+            return
+        self.cfg_impresoras.remove(actual)
+        if str(self.config.get("notas", "impresora", "") or "").strip() == actual:
+            self.config.set("notas", "impresora", "")
+        self._refrescar_combo_impresoras()
+
     def _elegir_logo(self):
         ruta, _ = QFileDialog.getOpenFileName(
             self, "Seleccionar logo", "", "Imágenes (*.png *.jpg *.jpeg *.webp)"
@@ -2096,7 +2266,10 @@ class MainWindow(QMainWindow):
         self.config.set("notas", "telefono", self.cfg_tel.text().strip())
         self.config.set("contacto", "direccion", self.cfg_dir.text().strip())
         self.config.set("notas", "direccion", self.cfg_dir.text().strip())
-        self.config.set("notas", "impresora", self.cfg_impresora.text().strip())
+        self.config.set("notas", "impresoras", list(self.cfg_impresoras))
+        self.config.set(
+            "notas", "impresora", self.cfg_printer_combo.currentText().strip()
+        )
         self.config.set("apariencia", "tema", self.cfg_tema.currentText())
         self.config.set("identidad", "logo_personalizado", self.cfg_logo.text().strip())
         self.config.set(

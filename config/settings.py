@@ -35,6 +35,7 @@ DEFAULT_CONFIG = {
         "mostrar_logo": True,
         "cortar_papel": True,
         "impresora": "",
+        "impresoras": [],
     },
     "whatsapp": {
         "codigo_pais": "52",
