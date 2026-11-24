@@ -3,12 +3,12 @@ QMainWindow, QDialog, QWidget {
     background-color: #f4f6f9;
     color: #1e293b;
     font-family: "Segoe UI", Arial, sans-serif;
-    font-size: 13px;
+    font-size: 14px;
 }
 
-QFrame#TopBar {
-    background-color: #ffffff;
-    border-bottom: 1px solid #e2e8f0;
+QScrollArea {
+    background-color: transparent;
+    border: none;
 }
 
 QFrame#Sidebar {
@@ -19,13 +19,13 @@ QFrame#Sidebar {
 QFrame#Card {
     background-color: #ffffff;
     border: 1px solid #e2e8f0;
-    border-radius: 12px;
+    border-radius: 14px;
 }
 
 QFrame#SubBar {
     background-color: #ffffff;
     border: 1px solid #e2e8f0;
-    border-radius: 10px;
+    border-radius: 12px;
 }
 
 QLabel {
@@ -34,7 +34,7 @@ QLabel {
 }
 
 QLabel#Title {
-    font-size: 20px;
+    font-size: 21px;
     font-weight: 700;
     color: #0f172a;
 }
@@ -68,7 +68,7 @@ QLabel#CardLink {
 }
 
 QLabel#MetricValue {
-    font-size: 18px;
+    font-size: 19px;
     font-weight: 700;
     color: #0284c7;
 }
@@ -83,8 +83,8 @@ QPushButton {
     background-color: #ffffff;
     color: #334155;
     border: 1px solid #cbd5e1;
-    border-radius: 7px;
-    padding: 6px 12px;
+    border-radius: 10px;
+    padding: 10px 18px;
     font-weight: 600;
 }
 
@@ -109,12 +109,12 @@ QPushButton#PrimaryBtn:hover {
 
 QPushButton#NavBtn {
     text-align: left;
-    padding: 9px 12px;
+    padding: 12px 16px;
     background-color: transparent;
     color: #475569;
     border: none;
     border-left: 3px solid transparent;
-    border-radius: 6px;
+    border-radius: 10px;
     font-weight: 600;
 }
 
@@ -136,7 +136,7 @@ QPushButton#StageTab {
     border: none;
     border-bottom: 2px solid transparent;
     border-radius: 0px;
-    padding: 8px 14px;
+    padding: 10px 18px;
     font-weight: 600;
 }
 
@@ -154,8 +154,8 @@ QLineEdit, QComboBox, QTextEdit, QPlainTextEdit, QDoubleSpinBox, QSpinBox {
     background-color: #ffffff;
     color: #0f172a;
     border: 1px solid #cbd5e1;
-    border-radius: 7px;
-    padding: 6px 10px;
+    border-radius: 10px;
+    padding: 9px 14px;
 }
 
 QLineEdit:focus, QComboBox:focus, QTextEdit:focus, QPlainTextEdit:focus, QDoubleSpinBox:focus, QSpinBox:focus {
@@ -173,10 +173,14 @@ QTableWidget {
     selection-color: #0369a1;
 }
 
+QTableWidget::item {
+    padding: 9px 12px;
+}
+
 QHeaderView::section {
     background-color: #ffffff;
     color: #64748b;
-    padding: 9px 10px;
+    padding: 12px 14px;
     border: none;
     border-bottom: 1px solid #e2e8f0;
     font-size: 11px;
@@ -185,17 +189,17 @@ QHeaderView::section {
 
 QTabWidget::pane {
     border: 1px solid #e2e8f0;
-    border-radius: 10px;
+    border-radius: 12px;
     background-color: #ffffff;
 }
 
 QTabBar::tab {
     background-color: #e2e8f0;
     color: #475569;
-    padding: 8px 16px;
-    border-top-left-radius: 7px;
-    border-top-right-radius: 7px;
-    margin-right: 4px;
+    padding: 9px 18px;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    margin-right: 6px;
 }
 
 QTabBar::tab:selected {
@@ -210,12 +214,12 @@ QMainWindow, QDialog, QWidget {
     background-color: #0f172a;
     color: #e2e8f0;
     font-family: "Segoe UI", Arial, sans-serif;
-    font-size: 13px;
+    font-size: 14px;
 }
 
-QFrame#TopBar {
-    background-color: #111827;
-    border-bottom: 1px solid #1e293b;
+QScrollArea {
+    background-color: transparent;
+    border: none;
 }
 
 QFrame#Sidebar {
@@ -226,7 +230,7 @@ QFrame#Sidebar {
 QFrame#Card, QFrame#SubBar {
     background-color: #1e293b;
     border: 1px solid #334155;
-    border-radius: 12px;
+    border-radius: 14px;
 }
 
 QLabel {
@@ -235,7 +239,7 @@ QLabel {
 }
 
 QLabel#Title {
-    font-size: 20px;
+    font-size: 21px;
     font-weight: 700;
     color: #f8fafc;
 }
@@ -269,7 +273,7 @@ QLabel#CardLink {
 }
 
 QLabel#MetricValue {
-    font-size: 18px;
+    font-size: 19px;
     font-weight: 700;
     color: #38bdf8;
 }
@@ -284,8 +288,8 @@ QPushButton {
     background-color: #1e293b;
     color: #f1f5f9;
     border: 1px solid #334155;
-    border-radius: 7px;
-    padding: 6px 12px;
+    border-radius: 10px;
+    padding: 10px 18px;
     font-weight: 600;
 }
 
@@ -309,12 +313,12 @@ QPushButton#PrimaryBtn:hover {
 
 QPushButton#NavBtn {
     text-align: left;
-    padding: 9px 12px;
+    padding: 12px 16px;
     background-color: transparent;
     color: #cbd5e1;
     border: none;
     border-left: 3px solid transparent;
-    border-radius: 6px;
+    border-radius: 10px;
     font-weight: 600;
 }
 
@@ -336,7 +340,7 @@ QPushButton#StageTab {
     border: none;
     border-bottom: 2px solid transparent;
     border-radius: 0px;
-    padding: 8px 14px;
+    padding: 10px 18px;
     font-weight: 600;
 }
 
@@ -350,8 +354,8 @@ QLineEdit, QComboBox, QTextEdit, QPlainTextEdit, QDoubleSpinBox, QSpinBox {
     background-color: #0f172a;
     color: #f8fafc;
     border: 1px solid #334155;
-    border-radius: 7px;
-    padding: 6px 10px;
+    border-radius: 10px;
+    padding: 9px 14px;
 }
 
 QTableWidget {
@@ -365,10 +369,14 @@ QTableWidget {
     selection-color: #ffffff;
 }
 
+QTableWidget::item {
+    padding: 9px 12px;
+}
+
 QHeaderView::section {
     background-color: #1e293b;
     color: #94a3b8;
-    padding: 9px 10px;
+    padding: 12px 14px;
     border: none;
     border-bottom: 1px solid #334155;
     font-size: 11px;
@@ -377,17 +385,17 @@ QHeaderView::section {
 
 QTabWidget::pane {
     border: 1px solid #334155;
-    border-radius: 10px;
+    border-radius: 12px;
     background-color: #1e293b;
 }
 
 QTabBar::tab {
     background-color: #0f172a;
     color: #94a3b8;
-    padding: 8px 16px;
-    border-top-left-radius: 7px;
-    border-top-right-radius: 7px;
-    margin-right: 4px;
+    padding: 9px 18px;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    margin-right: 6px;
 }
 
 QTabBar::tab:selected {

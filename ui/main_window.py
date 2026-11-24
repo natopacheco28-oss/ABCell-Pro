@@ -44,8 +44,10 @@ from database.db_manager import DatabaseManager
 from integrations.printer_58mm import (
     generar_texto_ticket,
     imprimir_ticket_58mm,
+    imprimir_ticket_prueba,
     logo_color_pil,
     logo_pil,
+    obtener_estado_impresora,
 )
 
 try:
@@ -469,41 +471,6 @@ class PatronCanvasWidget(QWidget):
                 painter.drawEllipse(pt, 4, 4)
 
 
-def _make_summary_card(titulo: str, subtitulo: str, enlace: str, badge_bg: str, badge_fg: str):
-    card = QFrame()
-    card.setObjectName("Card")
-    lay = QHBoxLayout(card)
-    lay.setContentsMargins(16, 14, 16, 14)
-    lay.setSpacing(12)
-
-    badge = QLabel("●")
-    badge.setFixedSize(36, 36)
-    badge.setAlignment(Qt.AlignCenter)
-    badge.setStyleSheet(
-        f"background-color: {badge_bg}; color: {badge_fg}; border-radius: 18px; font-size: 15px; font-weight: 700;"
-    )
-    lay.addWidget(badge)
-
-    txt = QVBoxLayout()
-    txt.setSpacing(2)
-    lbl_t = QLabel(titulo)
-    lbl_t.setObjectName("CardTitle")
-    row_sub = QHBoxLayout()
-    row_sub.setSpacing(6)
-    lbl_s = QLabel(subtitulo)
-    lbl_s.setObjectName("CardSub")
-    lbl_l = QLabel(enlace)
-    lbl_l.setObjectName("CardLink")
-    row_sub.addWidget(lbl_s)
-    row_sub.addWidget(lbl_l)
-    row_sub.addStretch()
-
-    txt.addWidget(lbl_t)
-    txt.addLayout(row_sub)
-    lay.addLayout(txt, 1)
-    return card, lbl_s, lbl_l
-
-
 def _make_metric_card(titulo: str, valor: str, subtitulo: str):
     card = QFrame()
     card.setObjectName("Card")
@@ -527,7 +494,7 @@ def _configurar_tabla(tabla: QTableWidget, stretch_col: int = -1):
     tabla.setSelectionBehavior(QTableWidget.SelectRows)
     tabla.setEditTriggers(QTableWidget.NoEditTriggers)
     tabla.verticalHeader().setVisible(False)
-    tabla.verticalHeader().setDefaultSectionSize(42)
+    tabla.verticalHeader().setDefaultSectionSize(46)
     tabla.setShowGrid(False)
     header = tabla.horizontalHeader()
     header.setSectionResizeMode(QHeaderView.Interactive)
@@ -601,18 +568,10 @@ class MainWindow(QMainWindow):
     def aplicar_tema(self):
         es_claro = self._es_tema_claro()
         self.setStyleSheet(LIGHT_QSS if es_claro else DARK_QSS)
-        if hasattr(self, "btn_toggle_tema"):
-            self.btn_toggle_tema.setText("Modo Oscuro" if es_claro else "Modo Claro")
         if hasattr(self, "cfg_tema"):
             self.cfg_tema.blockSignals(True)
             self.cfg_tema.setCurrentText("Claro" if es_claro else "Oscuro")
             self.cfg_tema.blockSignals(False)
-
-    def alternar_tema_rapido(self):
-        nuevo_tema = "Oscuro" if self._es_tema_claro() else "Claro"
-        self.config.set("apariencia", "tema", nuevo_tema)
-        self.config.save()
-        self.aplicar_tema()
 
     def _build_ui(self):
         central = QWidget()
@@ -621,61 +580,24 @@ class MainWindow(QMainWindow):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        topbar = QFrame()
-        topbar.setObjectName("TopBar")
-        topbar.setFixedHeight(52)
-        tb_lay = QHBoxLayout(topbar)
-        tb_lay.setContentsMargins(16, 8, 16, 8)
-        tb_lay.setSpacing(10)
-
-        self.lbl_topbar_logo = QLabel()
-        self.lbl_topbar_logo.setFixedSize(28, 28)
-        self.lbl_topbar_logo.setAlignment(Qt.AlignCenter)
-        self._cargar_logo_widget(self.lbl_topbar_logo, 26)
-        tb_lay.addWidget(self.lbl_topbar_logo)
-
-        self.txt_global_search = QLineEdit()
-        self.txt_global_search.setPlaceholderText("Buscar [ENTER] en órdenes o clientes...")
-        self.txt_global_search.setMinimumWidth(260)
-        self.txt_global_search.setMaximumWidth(360)
-        self.txt_global_search.returnPressed.connect(self._buscar_global)
-
-        lbl_fecha = QLabel(datetime.now().strftime("%d/%m/%Y"))
-        lbl_fecha.setObjectName("CardSub")
-
-        self.btn_toggle_tema = QPushButton("Modo Oscuro")
-        self.btn_toggle_tema.setMinimumWidth(115)
-        self.btn_toggle_tema.clicked.connect(self.alternar_tema_rapido)
-
-        btn_quick_new = QPushButton("+ Nueva Orden")
-        btn_quick_new.setObjectName("PrimaryBtn")
-        btn_quick_new.setMinimumWidth(125)
-        btn_quick_new.clicked.connect(lambda: self.ir_a_seccion(1))
-
-        tb_lay.addWidget(self.txt_global_search)
-        tb_lay.addWidget(lbl_fecha)
-        tb_lay.addStretch()
-        tb_lay.addWidget(self.btn_toggle_tema)
-        tb_lay.addWidget(btn_quick_new)
-        outer.addWidget(topbar)
-
         body = QHBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(0)
 
         sidebar = QFrame()
         sidebar.setObjectName("Sidebar")
-        sidebar.setFixedWidth(225)
+        sidebar.setFixedWidth(240)
+        self.sidebar = sidebar
         sb_lay = QVBoxLayout(sidebar)
-        sb_lay.setContentsMargins(12, 16, 12, 16)
-        sb_lay.setSpacing(4)
+        sb_lay.setContentsMargins(16, 24, 16, 20)
+        sb_lay.setSpacing(8)
 
         brand_row = QHBoxLayout()
-        brand_row.setSpacing(8)
+        brand_row.setSpacing(12)
         self.lbl_logo_sidebar = QLabel()
-        self.lbl_logo_sidebar.setFixedSize(40, 40)
+        self.lbl_logo_sidebar.setFixedSize(44, 44)
         self.lbl_logo_sidebar.setAlignment(Qt.AlignCenter)
-        self._cargar_logo_widget(self.lbl_logo_sidebar, 38)
+        self._cargar_logo_widget(self.lbl_logo_sidebar, 42)
 
         self.lbl_brand_sidebar = QLabel(
             self.config.get("identidad", "nombre_establecimiento", "ABCell")
@@ -686,7 +608,11 @@ class MainWindow(QMainWindow):
         brand_row.addWidget(self.lbl_brand_sidebar, 1)
         sb_lay.addLayout(brand_row)
 
-        sb_lay.addSpacing(10)
+        self.lbl_sidebar_fecha = QLabel(datetime.now().strftime("%d/%m/%Y"))
+        self.lbl_sidebar_fecha.setObjectName("CardSub")
+        sb_lay.addWidget(self.lbl_sidebar_fecha)
+
+        sb_lay.addSpacing(16)
 
         secciones = [
             ("Órdenes de trabajo", 0),
@@ -700,15 +626,15 @@ class MainWindow(QMainWindow):
         for texto, idx in secciones:
             btn = QPushButton(texto)
             btn.setObjectName("NavBtn")
-            btn.setMinimumHeight(36)
+            btn.setMinimumHeight(44)
             btn.clicked.connect(lambda checked=False, i=idx: self.ir_a_seccion(i))
             sb_lay.addWidget(btn)
             self.nav_buttons.append(btn)
 
-        sb_lay.addStretch()
+        sb_lay.addStretch(1)
 
         btn_sync = QPushButton("Refrescar datos")
-        btn_sync.setMinimumHeight(34)
+        btn_sync.setMinimumHeight(42)
         btn_sync.clicked.connect(self.refrescar_todo)
         sb_lay.addWidget(btn_sync)
 
@@ -727,13 +653,6 @@ class MainWindow(QMainWindow):
 
         outer.addLayout(body, 1)
         self.ir_a_seccion(0)
-
-    def _buscar_global(self):
-        texto = self.txt_global_search.text().strip()
-        self.ir_a_seccion(0)
-        if hasattr(self, "txt_buscar_orden"):
-            self.txt_buscar_orden.setText(texto)
-            self.refrescar_ordenes()
 
     def _cargar_logo_widget(self, label: QLabel, tam: int):
         pm = self._obtener_pixmap_abcell()
@@ -782,50 +701,11 @@ class MainWindow(QMainWindow):
     def _build_taller_ordenes_tab(self) -> QWidget:
         w = QWidget()
         lay = QVBoxLayout(w)
-        lay.setContentsMargins(22, 16, 22, 16)
-        lay.setSpacing(12)
-
-        head_row = QHBoxLayout()
-        title_box = QVBoxLayout()
-        title_box.setSpacing(2)
-        lbl_t = QLabel("Taller")
-        lbl_t.setObjectName("Title")
-        lbl_bc = QLabel("Principal › Taller › Órdenes")
-        lbl_bc.setObjectName("Breadcrumb")
-        title_box.addWidget(lbl_t)
-        title_box.addWidget(lbl_bc)
-
-        btn_crear = QPushButton("+ Crear")
-        btn_crear.setObjectName("PrimaryBtn")
-        btn_crear.setMinimumWidth(115)
-        btn_crear.setMinimumHeight(34)
-        btn_crear.clicked.connect(lambda: self.ir_a_seccion(1))
-
-        head_row.addLayout(title_box)
-        head_row.addStretch()
-        head_row.addWidget(btn_crear)
-        lay.addLayout(head_row)
-
-        cards_row = QHBoxLayout()
-        cards_row.setSpacing(14)
-
-        c1, self.lbl_c1_sub, self.lbl_c1_link = _make_summary_card(
-            "Estado del taller", "¡Todo en orden!", "Ver activas", "#dcfce7", "#16a34a"
-        )
-        c2, self.lbl_c2_sub, self.lbl_c2_link = _make_summary_card(
-            "Órdenes abiertas", "0 Abiertas", "Listado", "#e0f2fe", "#0284c7"
-        )
-        c3, self.lbl_c3_sub, self.lbl_c3_link = _make_summary_card(
-            "Saldo por cobrar", "$0.00", "WhatsApp", "#fef3c7", "#d97706"
-        )
-
-        cards_row.addWidget(c1)
-        cards_row.addWidget(c2)
-        cards_row.addWidget(c3)
-        lay.addLayout(cards_row)
+        lay.setContentsMargins(26, 20, 26, 20)
+        lay.setSpacing(14)
 
         stage_bar = QHBoxLayout()
-        stage_bar.setSpacing(6)
+        stage_bar.setSpacing(8)
         etapas = [
             ("Todas", "Todas"),
             ("Entrada", "Entrada"),
@@ -843,23 +723,46 @@ class MainWindow(QMainWindow):
         stage_bar.addStretch()
         lay.addLayout(stage_bar)
 
-        sub_bar = QFrame()
-        sub_bar.setObjectName("SubBar")
-        sb_l = QHBoxLayout(sub_bar)
-        sb_l.setContentsMargins(16, 10, 16, 10)
+        filtr_card = QFrame()
+        filtr_card.setObjectName("Card")
+        fc_lay = QVBoxLayout(filtr_card)
+        fc_lay.setContentsMargins(20, 18, 20, 18)
+        fc_lay.setSpacing(10)
+
+        fila_filtros = QHBoxLayout()
+        fila_filtros.setSpacing(10)
+        self.txt_buscar_orden = QLineEdit()
+        self.txt_buscar_orden.setPlaceholderText("Buscar cliente, equipo o falla [ENTER]")
+        self.txt_buscar_orden.setMinimumWidth(260)
+        self.txt_buscar_orden.textChanged.connect(self.refrescar_ordenes)
+
+        self.cmb_filtro_estatus = QComboBox()
+        self.cmb_filtro_estatus.setMinimumWidth(180)
+        self.cmb_filtro_estatus.addItems(["Todos"] + ESTATUS_ORDEN)
+        self.cmb_filtro_estatus.currentTextChanged.connect(self.refrescar_ordenes)
+
+        self.cmb_filtro_cat = QComboBox()
+        self.cmb_filtro_cat.setMinimumWidth(160)
+        self.cmb_filtro_cat.addItems(["Todas"] + CATEGORIAS_EQUIPO)
+        self.cmb_filtro_cat.currentTextChanged.connect(self.refrescar_ordenes)
+
+        fila_filtros.addWidget(QLabel("Filtrar:"))
+        fila_filtros.addWidget(self.txt_buscar_orden, 1)
+        fila_filtros.addWidget(QLabel("Estatus:"))
+        fila_filtros.addWidget(self.cmb_filtro_estatus)
+        fila_filtros.addWidget(QLabel("Categoría:"))
+        fila_filtros.addWidget(self.cmb_filtro_cat)
+        fc_lay.addLayout(fila_filtros)
+
         self.lbl_contador_ordenes = QLabel("Cantidad: 0 Órdenes")
         self.lbl_contador_ordenes.setObjectName("CardSub")
-        self.lbl_resumen_extra = QLabel("Listas para entrega: 0")
-        self.lbl_resumen_extra.setObjectName("CardSub")
-        sb_l.addWidget(self.lbl_contador_ordenes)
-        sb_l.addStretch()
-        sb_l.addWidget(self.lbl_resumen_extra)
-        lay.addWidget(sub_bar)
+        fc_lay.addWidget(self.lbl_contador_ordenes)
+        lay.addWidget(filtr_card)
 
         tbl_card = QFrame()
         tbl_card.setObjectName("Card")
         tc_lay = QVBoxLayout(tbl_card)
-        tc_lay.setContentsMargins(16, 14, 16, 14)
+        tc_lay.setContentsMargins(20, 18, 20, 18)
         tc_lay.setSpacing(10)
 
         t_head = QHBoxLayout()
@@ -869,25 +772,14 @@ class MainWindow(QMainWindow):
         t_head.addWidget(lbl_o)
         t_head.addStretch()
 
-        self.txt_buscar_orden = QLineEdit()
-        self.txt_buscar_orden.setPlaceholderText("Buscar [ENTER]")
-        self.txt_buscar_orden.setMinimumWidth(220)
-        self.txt_buscar_orden.textChanged.connect(self.refrescar_ordenes)
-
-        self.cmb_filtro_estatus = QComboBox()
-        self.cmb_filtro_estatus.setMinimumWidth(155)
-        self.cmb_filtro_estatus.addItems(["Todos"] + ESTATUS_ORDEN)
-        self.cmb_filtro_estatus.currentTextChanged.connect(self.refrescar_ordenes)
-
-        self.cmb_filtro_cat = QComboBox()
-        self.cmb_filtro_cat.setMinimumWidth(135)
-        self.cmb_filtro_cat.addItems(["Todas"] + CATEGORIAS_EQUIPO)
-        self.cmb_filtro_cat.currentTextChanged.connect(self.refrescar_ordenes)
-
-        t_head.addWidget(self.txt_buscar_orden)
-        t_head.addWidget(self.cmb_filtro_estatus)
-        t_head.addWidget(self.cmb_filtro_cat)
+        ayuda_tbl = QLabel(
+            "Doble clic en una fila para editar la orden. Selecciona una orden para "
+            "actualizar su estado, registrar abonos o imprimir su ticket."
+        )
+        ayuda_tbl.setObjectName("CardSub")
+        ayuda_tbl.setWordWrap(True)
         tc_lay.addLayout(t_head)
+        tc_lay.addWidget(ayuda_tbl)
 
         self.tbl_ordenes = QTableWidget(0, 8)
         self.tbl_ordenes.setHorizontalHeaderLabels(
@@ -895,6 +787,7 @@ class MainWindow(QMainWindow):
         )
         _configurar_tabla(self.tbl_ordenes, stretch_col=5)
         self.tbl_ordenes.itemSelectionChanged.connect(self._cargar_orden_seleccionada)
+        self.tbl_ordenes.itemDoubleClicked.connect(self._editar_orden_sel)
         tc_lay.addWidget(self.tbl_ordenes, 1)
 
         lay.addWidget(tbl_card, 1)
@@ -902,8 +795,8 @@ class MainWindow(QMainWindow):
         panel_accion = QFrame()
         panel_accion.setObjectName("SubBar")
         pa_lay = QVBoxLayout(panel_accion)
-        pa_lay.setContentsMargins(14, 10, 14, 10)
-        pa_lay.setSpacing(8)
+        pa_lay.setContentsMargins(20, 14, 20, 14)
+        pa_lay.setSpacing(12)
 
         f1 = QHBoxLayout()
         f1.setSpacing(8)
@@ -996,8 +889,8 @@ class MainWindow(QMainWindow):
         scroll.setFrameShape(QFrame.NoFrame)
         w = QWidget()
         lay = QVBoxLayout(w)
-        lay.setContentsMargins(22, 18, 22, 18)
-        lay.setSpacing(12)
+        lay.setContentsMargins(26, 20, 26, 20)
+        lay.setSpacing(14)
 
         lbl = QLabel("Registrar Nueva Orden de Trabajo")
         lbl.setObjectName("Title")
@@ -1006,8 +899,8 @@ class MainWindow(QMainWindow):
         card = QFrame()
         card.setObjectName("Card")
         form = QFormLayout(card)
-        form.setSpacing(10)
-        form.setContentsMargins(18, 18, 18, 18)
+        form.setSpacing(12)
+        form.setContentsMargins(20, 20, 20, 20)
 
         self.no_cliente = QLineEdit()
         self.no_cliente.setPlaceholderText("Nombre completo del cliente")
@@ -1333,15 +1226,6 @@ class MainWindow(QMainWindow):
                 self.tbl_ordenes.setItem(idx, c_idx, QTableWidgetItem(val))
 
         self.lbl_contador_ordenes.setText(f"Cantidad: {len(ordenes)} Órdenes")
-
-        metricas = self.service.obtener_metricas_dashboard("Todas")
-        self.lbl_c2_sub.setText(f"{metricas['activas']} Abiertas")
-        self.lbl_c3_sub.setText(f"{simbolo}{metricas['saldos_pendientes']:,.2f}")
-        self.lbl_resumen_extra.setText(f"Listas para entrega: {metricas['por_entregar']}")
-        if metricas["guardados_7"] > 0:
-            self.lbl_c1_sub.setText(f"{metricas['guardados_7']} guardados +7 días")
-        else:
-            self.lbl_c1_sub.setText("¡Todo en orden!")
 
         ubicaciones = self.service.listar_ubicaciones(solo_activas=True)
         actual = self.cmb_orden_ubicacion.currentText()
@@ -1748,8 +1632,8 @@ class MainWindow(QMainWindow):
     def _build_catalogo_ubicaciones_tab(self) -> QWidget:
         w = QWidget()
         lay = QVBoxLayout(w)
-        lay.setContentsMargins(22, 16, 22, 16)
-        lay.setSpacing(12)
+        lay.setContentsMargins(26, 20, 26, 20)
+        lay.setSpacing(14)
 
         lbl = QLabel("Catálogo de Servicios y Ubicaciones")
         lbl.setObjectName("Title")
@@ -2111,8 +1995,8 @@ class MainWindow(QMainWindow):
     def _build_reportes_tab(self) -> QWidget:
         w = QWidget()
         lay = QVBoxLayout(w)
-        lay.setContentsMargins(22, 16, 22, 16)
-        lay.setSpacing(12)
+        lay.setContentsMargins(26, 20, 26, 20)
+        lay.setSpacing(14)
 
         lbl = QLabel("Estadísticas y Reportes Financieros")
         lbl.setObjectName("Title")
@@ -2167,18 +2051,15 @@ class MainWindow(QMainWindow):
     def _build_inventario_tab(self) -> QWidget:
         w = QWidget()
         lay = QVBoxLayout(w)
-        lay.setContentsMargins(22, 16, 22, 16)
-        lay.setSpacing(12)
+        lay.setContentsMargins(26, 20, 26, 20)
+        lay.setSpacing(14)
 
         head_row = QHBoxLayout()
         title_box = QVBoxLayout()
         title_box.setSpacing(2)
         lbl_t = QLabel("Inventario de Productos y Refacciones")
         lbl_t.setObjectName("Title")
-        lbl_bc = QLabel("Principal › Inventario › Stock, Costos y Precios")
-        lbl_bc.setObjectName("Breadcrumb")
         title_box.addWidget(lbl_t)
-        title_box.addWidget(lbl_bc)
 
         self.lbl_inv_candado = QLabel("")
         self.lbl_inv_candado.setObjectName("CardSub")
@@ -2645,18 +2526,15 @@ class MainWindow(QMainWindow):
     def _build_utilidades_android_tab(self) -> QWidget:
         w = QWidget()
         lay = QVBoxLayout(w)
-        lay.setContentsMargins(22, 16, 22, 16)
-        lay.setSpacing(10)
+        lay.setContentsMargins(26, 20, 26, 20)
+        lay.setSpacing(14)
 
         head_row = QHBoxLayout()
         title_box = QVBoxLayout()
         title_box.setSpacing(2)
         lbl_t = QLabel("Utilidades Android (ADB)")
         lbl_t.setObjectName("Title")
-        lbl_bc = QLabel("Principal › Utilidades Android › Diagnósticos, Malware y DNS")
-        lbl_bc.setObjectName("Breadcrumb")
         title_box.addWidget(lbl_t)
-        title_box.addWidget(lbl_bc)
 
         btn_guia_adb = QPushButton("¿Cómo conectar por USB?")
         btn_guia_adb.clicked.connect(self._mostrar_guia_adb)
@@ -3629,10 +3507,13 @@ class MainWindow(QMainWindow):
     # 6. CONFIGURACIÓN DE TALLER
     # ------------------------------------------
     def _build_config_tab(self) -> QWidget:
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
         w = QWidget()
         lay = QVBoxLayout(w)
-        lay.setContentsMargins(22, 16, 22, 16)
-        lay.setSpacing(12)
+        lay.setContentsMargins(26, 20, 26, 20)
+        lay.setSpacing(16)
 
         lbl = QLabel("Configuración de Taller")
         lbl.setObjectName("Title")
@@ -3641,46 +3522,32 @@ class MainWindow(QMainWindow):
         card = QFrame()
         card.setObjectName("Card")
         form = QFormLayout(card)
-        form.setSpacing(10)
-        form.setContentsMargins(18, 18, 18, 18)
+        form.setSpacing(14)
+        form.setContentsMargins(22, 20, 22, 20)
 
         self.cfg_nombre = QLineEdit(
             self.config.get("identidad", "nombre_establecimiento", "ABCell")
         )
         self.cfg_tel = QLineEdit(self.config.get("contacto", "telefono", ""))
         self.cfg_dir = QLineEdit(self.config.get("contacto", "direccion", ""))
-        # --- Gestor de impresoras (lista editable, reemplaza el campo simple) ---
-        self.cfg_impresoras: list[str] = self._cargar_impresoras_config()
-        self.cfg_printer_combo = QComboBox()
-        self._refrescar_combo_impresoras()
+        # --- Impresión de tickets: detecta automáticamente la impresora de Windows ---
+        imp_card = QFrame()
+        imp_card.setObjectName("Card")
+        imp_lay = QVBoxLayout(imp_card)
+        imp_lay.setContentsMargins(18, 16, 18, 16)
+        imp_lay.setSpacing(8)
 
-        box_impresoras = QVBoxLayout()
-        box_impresoras.setSpacing(6)
-        box_impresoras.addWidget(self.cfg_printer_combo)
-
-        fila_imp = QHBoxLayout()
-        fila_imp.setSpacing(6)
-        btn_detectar_imp = QPushButton("Detectar impresoras")
-        btn_detectar_imp.clicked.connect(self._detectar_impresoras)
-        btn_agregar_imp = QPushButton("Agregar")
-        btn_agregar_imp.clicked.connect(self._agregar_impresora)
-        btn_editar_imp = QPushButton("Editar")
-        btn_editar_imp.clicked.connect(self._editar_impresora)
-        btn_eliminar_imp = QPushButton("Eliminar")
-        btn_eliminar_imp.setStyleSheet(ESTILO_BOTON_PELIGRO)
-        btn_eliminar_imp.clicked.connect(self._eliminar_impresora)
-        for b_imp in (btn_detectar_imp, btn_agregar_imp, btn_editar_imp, btn_eliminar_imp):
-            fila_imp.addWidget(b_imp)
-        fila_imp.addStretch()
-        box_impresoras.addLayout(fila_imp)
-
-        lbl_imp_ayuda = QLabel(
-            "Elige la impresora que usará el botón «Imprimir ticket». "
-            "Si la lista está vacía, se usará la impresora predeterminada de Windows."
-        )
-        lbl_imp_ayuda.setObjectName("CardSub")
-        lbl_imp_ayuda.setWordWrap(True)
-        box_impresoras.addWidget(lbl_imp_ayuda)
+        lbl_imp_t = QLabel("Impresión de tickets")
+        lbl_imp_t.setObjectName("CardTitle")
+        self.lbl_imp_auto = QLabel("Detectando la impresora predeterminada de Windows...")
+        self.lbl_imp_auto.setObjectName("CardSub")
+        self.lbl_imp_auto.setWordWrap(True)
+        btn_probar_imp = QPushButton("Probar impresión")
+        btn_probar_imp.setMinimumWidth(160)
+        btn_probar_imp.clicked.connect(self._probar_impresora)
+        imp_lay.addWidget(lbl_imp_t)
+        imp_lay.addWidget(self.lbl_imp_auto)
+        imp_lay.addWidget(btn_probar_imp, alignment=Qt.AlignLeft)
 
         self.cfg_tema = QComboBox()
         self.cfg_tema.addItems(["Claro", "Oscuro"])
@@ -3697,7 +3564,7 @@ class MainWindow(QMainWindow):
         form.addRow("Nombre del negocio:", self.cfg_nombre)
         form.addRow("Teléfono / WhatsApp:", self.cfg_tel)
         form.addRow("Dirección:", self.cfg_dir)
-        form.addRow("Impresoras:", box_impresoras)
+        form.addRow("Impresión de tickets:", imp_card)
         form.addRow("Tema visual (Claro / Oscuro):", self.cfg_tema)
         form.addRow("Logo personalizado:", row_logo)
 
@@ -3746,7 +3613,10 @@ class MainWindow(QMainWindow):
         btn_save.clicked.connect(self._guardar_config)
         lay.addWidget(btn_save, alignment=Qt.AlignRight)
         lay.addStretch()
-        return w
+
+        scroll.setWidget(w)
+        self._actualizar_estado_impresora()
+        return scroll
 
     def _definir_codigo_maestro(self, autorizado: bool = False):
         if self.config.tiene_codigo_maestro() and not autorizado:
@@ -3902,143 +3772,20 @@ class MainWindow(QMainWindow):
         self.config.save()
         self.aplicar_tema()
 
-    # --- Gestor de impresoras ---
-    def _cargar_impresoras_config(self) -> list[str]:
-        """Lee la lista de impresoras guardadas (migra el campo viejo si existe)."""
-        guardadas = self.config.get("notas", "impresoras", [])
-        lista: list[str] = []
-        if isinstance(guardadas, list):
-            for nombre in guardadas:
-                nombre = str(nombre or "").strip()
-                if nombre and nombre not in lista:
-                    lista.append(nombre)
-        vieja = str(self.config.get("notas", "impresora", "") or "").strip()
-        if vieja and vieja not in lista:
-            lista.append(vieja)
-        return lista
+    # --- Impresión automática en la impresora predeterminada de Windows ---
+    def _actualizar_estado_impresora(self):
+        if not hasattr(self, "lbl_imp_auto"):
+            return
+        info = obtener_estado_impresora()
+        self.lbl_imp_auto.setText(info.get("mensaje", ""))
 
-    def _refrescar_combo_impresoras(self):
-        if not hasattr(self, "cfg_printer_combo"):
-            return
-        seleccion = (
-            self.cfg_printer_combo.currentText().strip()
-            if self.cfg_printer_combo.count()
-            else ""
-        )
-        self.cfg_printer_combo.blockSignals(True)
-        self.cfg_printer_combo.clear()
-        self.cfg_printer_combo.addItems(self.cfg_impresoras)
-        actual = str(self.config.get("notas", "impresora", "") or "").strip()
-        if actual in self.cfg_impresoras:
-            self.cfg_printer_combo.setCurrentText(actual)
-        elif seleccion in self.cfg_impresoras:
-            self.cfg_printer_combo.setCurrentText(seleccion)
-        self.cfg_printer_combo.blockSignals(False)
-
-    def _detectar_impresoras(self):
-        try:
-            import win32print
-        except Exception:
-            QMessageBox.information(
-                self,
-                "No disponible",
-                "La detección automática solo funciona en Windows.",
-            )
-            return
-        try:
-            # 2 = PRINTER_ENUM_LOCAL
-            encontradas = win32print.EnumPrinters(2)
-            nombres: list[str] = []
-            for _flags, _desc, nombre, _comentario in encontradas:
-                nombre = str(nombre or "").strip()
-                if nombre and nombre not in nombres:
-                    nombres.append(nombre)
-        except Exception as exc:
-            QMessageBox.warning(
-                self, "No se pudo detectar", f"No se pudieron listar las impresoras:\n{exc}"
-            )
-            return
-        if not nombres:
-            QMessageBox.information(
-                self, "Sin impresoras", "No se encontraron impresoras instaladas en Windows."
-            )
-            return
-        nuevas = 0
-        for nombre in nombres:
-            if nombre not in self.cfg_impresoras:
-                self.cfg_impresoras.append(nombre)
-                nuevas += 1
-        self._refrescar_combo_impresoras()
-        QMessageBox.information(
-            self,
-            "Impresoras detectadas",
-            f"Se encontraron {len(nombres)} impresora(s).\nNuevas agregadas a la lista: {nuevas}.",
-        )
-
-    def _agregar_impresora(self):
-        nombre, ok = QInputDialog.getText(
-            self,
-            "Agregar impresora",
-            "Nombre de la impresora (tal como aparece en Windows):",
-        )
-        if not ok:
-            return
-        nombre = nombre.strip()
-        if not nombre:
-            return
-        if nombre in self.cfg_impresoras:
-            QMessageBox.warning(self, "Ya existe", "Esa impresora ya está en la lista.")
-            return
-        self.cfg_impresoras.append(nombre)
-        self._refrescar_combo_impresoras()
-        self.cfg_printer_combo.setCurrentText(nombre)
-
-    def _editar_impresora(self):
-        actual = self.cfg_printer_combo.currentText().strip()
-        if not actual:
-            QMessageBox.information(
-                self, "Sin impresora", "Selecciona una impresora de la lista para editarla."
-            )
-            return
-        nombre, ok = QInputDialog.getText(
-            self, "Editar impresora", "Nombre de la impresora:", text=actual
-        )
-        if not ok:
-            return
-        nombre = nombre.strip()
-        if not nombre or nombre == actual:
-            return
-        if nombre in self.cfg_impresoras:
-            QMessageBox.warning(self, "Ya existe", "Ya hay otra impresora con ese nombre.")
-            return
-        idx = self.cfg_impresoras.index(actual)
-        self.cfg_impresoras[idx] = nombre
-        if str(self.config.get("notas", "impresora", "") or "").strip() == actual:
-            self.config.set("notas", "impresora", nombre)
-        self._refrescar_combo_impresoras()
-        self.cfg_printer_combo.setCurrentText(nombre)
-
-    def _eliminar_impresora(self):
-        actual = self.cfg_printer_combo.currentText().strip()
-        if not actual:
-            QMessageBox.information(
-                self, "Sin impresora", "Selecciona una impresora de la lista para eliminarla."
-            )
-            return
-        resp = QMessageBox.question(
-            self,
-            "Eliminar impresora",
-            f"¿Eliminar '{actual}' de la lista?\n\n"
-            "No se desinstala la impresora de Windows, solo se quita de esta lista.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if resp != QMessageBox.StandardButton.Yes:
-            return
-        self.cfg_impresoras.remove(actual)
-        if str(self.config.get("notas", "impresora", "") or "").strip() == actual:
-            self.config.set("notas", "impresora", "")
-        self._refrescar_combo_impresoras()
+    def _probar_impresora(self):
+        ok, msg = imprimir_ticket_prueba(self.config)
+        if ok:
+            QMessageBox.information(self, "Prueba de impresión", msg)
+            self._actualizar_estado_impresora()
+        else:
+            QMessageBox.warning(self, "No se pudo imprimir", msg)
 
     def _elegir_logo(self):
         ruta, _ = QFileDialog.getOpenFileName(
@@ -4054,10 +3801,6 @@ class MainWindow(QMainWindow):
         self.config.set("notas", "telefono", self.cfg_tel.text().strip())
         self.config.set("contacto", "direccion", self.cfg_dir.text().strip())
         self.config.set("notas", "direccion", self.cfg_dir.text().strip())
-        self.config.set("notas", "impresoras", list(self.cfg_impresoras))
-        self.config.set(
-            "notas", "impresora", self.cfg_printer_combo.currentText().strip()
-        )
         self.config.set("apariencia", "tema", self.cfg_tema.currentText())
         self.config.set("identidad", "logo_personalizado", self.cfg_logo.text().strip())
         self.config.set(
@@ -4068,8 +3811,8 @@ class MainWindow(QMainWindow):
         self._aplicar_icono_abcell()
         self.aplicar_tema()
         self.lbl_brand_sidebar.setText(self.cfg_nombre.text().strip() or "ABCell")
-        self._cargar_logo_widget(self.lbl_logo_sidebar, 38)
-        self._cargar_logo_widget(self.lbl_topbar_logo, 26)
+        self._cargar_logo_widget(self.lbl_logo_sidebar, 42)
+        self._actualizar_estado_impresora()
         QMessageBox.information(self, "Guardado", "La configuración se guardó correctamente.")
         self.refrescar_todo()
 
@@ -4080,3 +3823,5 @@ class MainWindow(QMainWindow):
         self.refrescar_catalogo_ubicaciones()
         self.refrescar_reportes()
         self._actualizar_estado_binario_adb()
+        if self.stack.currentIndex() == 6:
+            self._actualizar_estado_impresora()

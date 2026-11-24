@@ -34,8 +34,6 @@ DEFAULT_CONFIG = {
         "tam_logo_px": 128,
         "mostrar_logo": True,
         "cortar_papel": True,
-        "impresora": "",
-        "impresoras": [],
     },
     "whatsapp": {
         "codigo_pais": "52",
