@@ -62,6 +62,9 @@ DEFAULT_CONFIG = {
         "salt": "",
         "hash": "",
     },
+    "android": {
+        "ruta_adb": "",
+    },
 }
 
 

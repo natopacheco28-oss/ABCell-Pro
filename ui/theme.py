@@ -374,4 +374,25 @@ QHeaderView::section {
     font-size: 11px;
     font-weight: 700;
 }
+
+QTabWidget::pane {
+    border: 1px solid #334155;
+    border-radius: 10px;
+    background-color: #1e293b;
+}
+
+QTabBar::tab {
+    background-color: #0f172a;
+    color: #94a3b8;
+    padding: 8px 16px;
+    border-top-left-radius: 7px;
+    border-top-right-radius: 7px;
+    margin-right: 4px;
+}
+
+QTabBar::tab:selected {
+    background-color: #0284c7;
+    color: #ffffff;
+    font-weight: 700;
+}
 """

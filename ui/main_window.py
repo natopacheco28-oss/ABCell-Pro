@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
+    QSpinBox,
     QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
@@ -60,6 +61,19 @@ ESTILO_BOTON_PELIGRO = (
     "border-radius:8px;padding:8px 14px;border:none;}"
     "QPushButton:hover{background:#b91c1c;}"
 )
+
+CATEGORIAS_INVENTARIO = [
+    "Refacciones",
+    "Pantallas",
+    "Baterías",
+    "Centros de carga",
+    "Accesorios",
+    "Micas y Fundas",
+    "Cables y Cargadores",
+    "Consolas",
+    "Consumibles",
+    "Otros",
+]
 
 GARANTIA_EJEMPLO = (
     "Garantia de 30 dias en la reparacion y en la refaccion instalada, "
@@ -190,6 +204,111 @@ except Exception:
 
         def eliminar_ubicacion(self, *args, **kwargs):
             return False
+
+        def listar_inventario(self, *args, **kwargs):
+            return []
+
+        def obtener_producto_inventario(self, *args, **kwargs):
+            return None
+
+        def guardar_producto_inventario(self, *args, **kwargs):
+            return 1
+
+        def actualizar_producto_inventario(self, *args, **kwargs):
+            return False
+
+        def ajustar_stock_inventario(self, *args, **kwargs):
+            return None
+
+        def eliminar_producto_inventario(self, *args, **kwargs):
+            return False
+
+        def obtener_resumen_inventario(self, *args, **kwargs):
+            return {
+                "total_productos": 0,
+                "total_unidades": 0,
+                "stock_bajo": 0,
+                "agotados": 0,
+                "valor_costo": 0.0,
+                "valor_venta": 0.0,
+                "ganancia_potencial": 0.0,
+            }
+
+try:
+    from integrations.adb_manager import ADBManager, PROVEEDORES_DNS
+except Exception:
+    PROVEEDORES_DNS = [
+        {
+            "id": "adguard",
+            "nombre": "AdGuard DNS — Bloquea anuncios y pop-ups",
+            "hostname": "dns.adguard-dns.com",
+            "descripcion": "Bloquea anuncios y rastreadores.",
+        }
+    ]
+
+    class ADBManager:  # type: ignore
+        def __init__(self, base_data_dir="", custom_adb_path=""):
+            self.base_data_dir = base_data_dir
+            self.custom_adb_path = custom_adb_path
+
+        def establecer_ruta_personalizada(self, ruta):
+            self.custom_adb_path = ruta
+
+        def resolver_ruta_adb(self):
+            return False, ""
+
+        def listar_dispositivos(self):
+            return {
+                "adb_ok": False,
+                "ruta_adb": "",
+                "dispositivos": [],
+                "mensaje": "Módulo ADB no disponible.",
+            }
+
+        def reiniciar_servidor(self):
+            return False, "Módulo ADB no disponible."
+
+        def diagnosticar_equipo(self, serial):
+            return {"ok": False, "error": "Módulo ADB no disponible."}
+
+        def capturar_pantalla(self, serial, ruta):
+            return False, "Módulo ADB no disponible."
+
+        def reiniciar_equipo(self, serial, modo=""):
+            return False, "Módulo ADB no disponible."
+
+        def escanear_malware(self, serial):
+            return {"ok": False, "error": "Módulo ADB no disponible.", "apps": []}
+
+        def detectar_app_en_pantalla(self, serial):
+            return {"ok": False, "error": "Módulo ADB no disponible."}
+
+        def desinstalar_paquete(self, serial, package):
+            return False, "Módulo ADB no disponible."
+
+        def desactivar_paquete(self, serial, package):
+            return False, "Módulo ADB no disponible."
+
+        def revocar_superposicion(self, serial, package):
+            return False, "Módulo ADB no disponible."
+
+        def limpiar_spam_navegador(self, serial, package="com.android.chrome"):
+            return False, "Módulo ADB no disponible."
+
+        def obtener_estado_dns(self, serial):
+            return {"ok": False, "modo": "", "servidor": "", "descripcion_corta": "No disponible"}
+
+        def anclar_dns(self, serial, servidor_dns):
+            return False, "Módulo ADB no disponible."
+
+        def restaurar_dns_automatico(self, serial):
+            return False, "Módulo ADB no disponible."
+
+        def desactivar_dns_privado(self, serial):
+            return False, "Módulo ADB no disponible."
+
+        def probar_conectividad_dns(self, serial):
+            return False, "Módulo ADB no disponible."
 
 try:
     from integrations.whatsapp_center import WhatsAppCenter
@@ -424,6 +543,14 @@ class MainWindow(QMainWindow):
         self.config = config
         self.service = WorkshopService(db, config)
         self.wa = WhatsAppCenter(db, config)
+        carpeta_datos = os.path.dirname(os.path.abspath(db.db_path))
+        self.adb = ADBManager(
+            carpeta_datos,
+            str(config.get("android", "ruta_adb", "") or ""),
+        )
+        self.inventario_desbloqueado: bool = False
+        self._ultimo_diag_adb: dict | None = None
+        self._apps_malware_cache: list[dict] = []
         self.nav_buttons: list[QPushButton] = []
         self.stage_buttons: list[QPushButton] = []
         self.etapa_filtro: str = "Todas"
@@ -564,10 +691,11 @@ class MainWindow(QMainWindow):
         secciones = [
             ("Órdenes de trabajo", 0),
             ("Nueva orden", 1),
-            ("Catálogo y Ubicaciones", 2),
-            ("Estadísticas y Caja", 3),
-            ("WhatsApp y Tickets", 4),
-            ("Configuración de taller", 5),
+            ("Inventario", 2),
+            ("Catálogo y Ubicaciones", 3),
+            ("Estadísticas y Caja", 4),
+            ("Utilidades Android", 5),
+            ("Configuración de taller", 6),
         ]
         for texto, idx in secciones:
             btn = QPushButton(texto)
@@ -591,9 +719,10 @@ class MainWindow(QMainWindow):
 
         self.stack.addWidget(self._build_taller_ordenes_tab())
         self.stack.addWidget(self._build_nueva_orden_tab())
+        self.stack.addWidget(self._build_inventario_tab())
         self.stack.addWidget(self._build_catalogo_ubicaciones_tab())
         self.stack.addWidget(self._build_reportes_tab())
-        self.stack.addWidget(self._build_wa_tickets_tab())
+        self.stack.addWidget(self._build_utilidades_android_tab())
         self.stack.addWidget(self._build_config_tab())
 
         outer.addLayout(body, 1)
@@ -1613,24 +1742,8 @@ class MainWindow(QMainWindow):
         self.refrescar_todo()
         QMessageBox.information(self, "Orden eliminada", f"Se eliminó la orden #{folio:04d}.")
 
-    def _enviar_wa_orden_sel(self):
-        folio = self._folio_seleccionado()
-        if not folio:
-            QMessageBox.information(self, "Selecciona orden", "Selecciona una orden de la tabla.")
-            return
-        o = self.service.obtener_orden(folio)
-        if not o:
-            return
-        tipo = "listo" if o.get("estatus") == "Listo para entregar" else "recibido"
-        msg = self.wa.construir_mensaje(tipo, o)
-        url = self.wa.generar_url_wa(o.get("cliente_tel", ""), msg)
-        self.wa.registrar_notificacion(
-            folio, o.get("cliente_nombre", ""), o.get("cliente_tel", ""), tipo, msg
-        )
-        webbrowser.open(url)
-
     # ------------------------------------------
-    # 2. CATÁLOGO Y UBICACIONES
+    # 3. CATÁLOGO Y UBICACIONES
     # ------------------------------------------
     def _build_catalogo_ubicaciones_tab(self) -> QWidget:
         w = QWidget()
@@ -2049,43 +2162,1468 @@ class MainWindow(QMainWindow):
                 self.tbl_rep_cat.setItem(idx, c_i, QTableWidgetItem(val))
 
     # ------------------------------------------
-    # 5. WHATSAPP Y TICKETS
+    # 2. INVENTARIO DE PRODUCTOS Y REFACCIONES
     # ------------------------------------------
-    def _build_wa_tickets_tab(self) -> QWidget:
+    def _build_inventario_tab(self) -> QWidget:
         w = QWidget()
         lay = QVBoxLayout(w)
         lay.setContentsMargins(22, 16, 22, 16)
         lay.setSpacing(12)
 
-        lbl = QLabel("WhatsApp y Historial de Notificaciones")
-        lbl.setObjectName("Title")
-        lay.addWidget(lbl)
+        head_row = QHBoxLayout()
+        title_box = QVBoxLayout()
+        title_box.setSpacing(2)
+        lbl_t = QLabel("Inventario de Productos y Refacciones")
+        lbl_t.setObjectName("Title")
+        lbl_bc = QLabel("Principal › Inventario › Stock, Costos y Precios")
+        lbl_bc.setObjectName("Breadcrumb")
+        title_box.addWidget(lbl_t)
+        title_box.addWidget(lbl_bc)
 
-        self.tbl_wa = QTableWidget(0, 6)
-        self.tbl_wa.setHorizontalHeaderLabels(
-            ["FOLIO", "CLIENTE", "TELÉFONO", "TIPO", "FECHA", "MENSAJE"]
+        self.lbl_inv_candado = QLabel("")
+        self.lbl_inv_candado.setObjectName("CardSub")
+
+        self.btn_inv_candado = QPushButton("Desbloquear edición")
+        self.btn_inv_candado.setMinimumHeight(34)
+        self.btn_inv_candado.clicked.connect(self._alternar_candado_inventario)
+
+        btn_nuevo_prod = QPushButton("+ Agregar producto")
+        btn_nuevo_prod.setObjectName("PrimaryBtn")
+        btn_nuevo_prod.setMinimumWidth(155)
+        btn_nuevo_prod.setMinimumHeight(34)
+        btn_nuevo_prod.clicked.connect(self._agregar_producto_inventario)
+
+        head_row.addLayout(title_box)
+        head_row.addStretch()
+        head_row.addWidget(self.lbl_inv_candado)
+        head_row.addWidget(self.btn_inv_candado)
+        head_row.addWidget(btn_nuevo_prod)
+        lay.addLayout(head_row)
+
+        cards_row = QHBoxLayout()
+        cards_row.setSpacing(12)
+        c_prod, self.lbl_inv_total, self.lbl_inv_unidades = _make_metric_card(
+            "Productos registrados", "0", "0 unidades disponibles"
         )
-        _configurar_tabla(self.tbl_wa, stretch_col=5)
-        lay.addWidget(self.tbl_wa, 1)
+        c_alert, self.lbl_inv_alertas, self.lbl_inv_alertas_sub = _make_metric_card(
+            "Alertas de stock", "0", "Todo con existencia suficiente"
+        )
+        c_costo, self.lbl_inv_costo, _ = _make_metric_card(
+            "Valor en costo", "$0.00", "Inversión actual en almacén"
+        )
+        c_venta, self.lbl_inv_venta, self.lbl_inv_ganancia = _make_metric_card(
+            "Valor en venta", "$0.00", "Ganancia est.: $0.00"
+        )
+        for c in (c_prod, c_alert, c_costo, c_venta):
+            cards_row.addWidget(c)
+        lay.addLayout(cards_row)
+
+        tbl_card = QFrame()
+        tbl_card.setObjectName("Card")
+        tc_lay = QVBoxLayout(tbl_card)
+        tc_lay.setContentsMargins(16, 14, 16, 14)
+        tc_lay.setSpacing(10)
+
+        filtros_row = QHBoxLayout()
+        filtros_row.setSpacing(8)
+
+        self.txt_buscar_inv = QLineEdit()
+        self.txt_buscar_inv.setPlaceholderText(
+            "Buscar por código, producto, marca/modelo o ubicación..."
+        )
+        self.txt_buscar_inv.setMinimumWidth(280)
+        self.txt_buscar_inv.textChanged.connect(self.refrescar_inventario)
+
+        self.cmb_inv_cat = QComboBox()
+        self.cmb_inv_cat.setMinimumWidth(160)
+        self.cmb_inv_cat.addItems(["Todas"] + CATEGORIAS_INVENTARIO)
+        self.cmb_inv_cat.currentTextChanged.connect(self.refrescar_inventario)
+
+        self.cmb_inv_stock = QComboBox()
+        self.cmb_inv_stock.setMinimumWidth(150)
+        self.cmb_inv_stock.addItems(["Todos", "Disponible", "Stock bajo", "Agotado"])
+        self.cmb_inv_stock.currentTextChanged.connect(self.refrescar_inventario)
+
+        filtros_row.addWidget(self.txt_buscar_inv, 1)
+        filtros_row.addWidget(QLabel("Categoría:"))
+        filtros_row.addWidget(self.cmb_inv_cat)
+        filtros_row.addWidget(QLabel("Existencia:"))
+        filtros_row.addWidget(self.cmb_inv_stock)
+        tc_lay.addLayout(filtros_row)
+
+        self.tbl_inventario = QTableWidget(0, 9)
+        self.tbl_inventario.setHorizontalHeaderLabels(
+            [
+                "ID",
+                "CÓDIGO",
+                "PRODUCTO",
+                "CATEGORÍA",
+                "MARCA / MODELO",
+                "STOCK",
+                "COSTO",
+                "PRECIO VENTA",
+                "ACCIONES",
+            ]
+        )
+        _configurar_tabla(self.tbl_inventario, stretch_col=2)
+        self.tbl_inventario.setColumnWidth(0, 52)
+        self.tbl_inventario.setColumnWidth(1, 95)
+        self.tbl_inventario.setColumnWidth(5, 115)
+        self.tbl_inventario.setColumnWidth(6, 105)
+        self.tbl_inventario.setColumnWidth(7, 115)
+        self.tbl_inventario.setColumnWidth(8, 255)
+        self.tbl_inventario.itemDoubleClicked.connect(self._editar_inventario_doble_clic)
+        tc_lay.addWidget(self.tbl_inventario, 1)
+
+        ayuda_inv = QLabel(
+            "Doble clic en cualquier producto para editarlo. El código maestro se pide una sola vez "
+            "al iniciar modificaciones y puedes agregar, ajustar o eliminar sin volver a escribirlo."
+        )
+        ayuda_inv.setObjectName("CardSub")
+        ayuda_inv.setWordWrap(True)
+        tc_lay.addWidget(ayuda_inv)
+
+        lay.addWidget(tbl_card, 1)
+        self._actualizar_ui_candado_inventario()
         return w
 
-    def refrescar_wa(self):
-        if not hasattr(self, "tbl_wa"):
+    def _actualizar_ui_candado_inventario(self):
+        if not hasattr(self, "lbl_inv_candado"):
             return
-        notifs = self.wa.listar_notificaciones()
-        self.tbl_wa.setRowCount(0)
-        for i, n in enumerate(notifs):
-            self.tbl_wa.insertRow(i)
+        if not self.config.tiene_codigo_maestro():
+            self.lbl_inv_candado.setText("Edición libre (sin código maestro)")
+            self.lbl_inv_candado.setStyleSheet("color: #16a34a; font-weight: 600;")
+            self.btn_inv_candado.setVisible(False)
+            return
+
+        self.btn_inv_candado.setVisible(True)
+        if self.inventario_desbloqueado:
+            self.lbl_inv_candado.setText("Edición activa")
+            self.lbl_inv_candado.setStyleSheet("color: #16a34a; font-weight: 700;")
+            self.btn_inv_candado.setText("Bloquear edición")
+        else:
+            self.lbl_inv_candado.setText("Edición protegida")
+            self.lbl_inv_candado.setStyleSheet("color: #d97706; font-weight: 700;")
+            self.btn_inv_candado.setText("Desbloquear edición")
+
+    def _alternar_candado_inventario(self):
+        if self.inventario_desbloqueado:
+            self.inventario_desbloqueado = False
+            self._actualizar_ui_candado_inventario()
+            QMessageBox.information(
+                self,
+                "Inventario bloqueado",
+                "El área de inventario quedó protegida nuevamente.",
+            )
+            return
+        if self._asegurar_edicion_inventario():
+            QMessageBox.information(
+                self,
+                "Edición desbloqueada",
+                "Ya puedes agregar, editar, ajustar stock o eliminar productos sin volver a ingresar la contraseña.",
+            )
+
+    def _asegurar_edicion_inventario(self) -> bool:
+        """Pide el código maestro solo la primera vez que se intenta modificar el inventario."""
+        if self.inventario_desbloqueado:
+            return True
+        if not self.config.tiene_codigo_maestro():
+            self.inventario_desbloqueado = True
+            self._actualizar_ui_candado_inventario()
+            return True
+        if self._autorizar_con_codigo("modificar el inventario"):
+            self.inventario_desbloqueado = True
+            self._actualizar_ui_candado_inventario()
+            return True
+        return False
+
+    def _crear_botones_inventario(self, producto_id: int) -> QWidget:
+        cont = QWidget()
+        lay = QHBoxLayout(cont)
+        lay.setContentsMargins(4, 2, 4, 2)
+        lay.setSpacing(4)
+
+        btn_menos = QPushButton("-1")
+        btn_menos.setFixedWidth(34)
+        btn_menos.setMaximumHeight(30)
+        btn_menos.setToolTip("Restar 1 al stock")
+        btn_menos.clicked.connect(
+            lambda _=False, pid=producto_id: self._ajustar_stock_rapido(pid, -1)
+        )
+
+        btn_mas = QPushButton("+1")
+        btn_mas.setFixedWidth(34)
+        btn_mas.setMaximumHeight(30)
+        btn_mas.setToolTip("Sumar 1 al stock")
+        btn_mas.clicked.connect(
+            lambda _=False, pid=producto_id: self._ajustar_stock_rapido(pid, 1)
+        )
+
+        btn_editar = QPushButton("Editar")
+        btn_editar.setMinimumWidth(68)
+        btn_editar.setMaximumHeight(30)
+        btn_editar.clicked.connect(
+            lambda _=False, pid=producto_id: self._editar_producto_inventario(pid)
+        )
+
+        btn_eliminar = QPushButton("Eliminar")
+        btn_eliminar.setMinimumWidth(76)
+        btn_eliminar.setMaximumHeight(30)
+        btn_eliminar.setStyleSheet(ESTILO_BOTON_PELIGRO)
+        btn_eliminar.clicked.connect(
+            lambda _=False, pid=producto_id: self._eliminar_producto_inventario(pid)
+        )
+
+        for b in (btn_menos, btn_mas, btn_editar, btn_eliminar):
+            lay.addWidget(b)
+        lay.addStretch()
+        return cont
+
+    def refrescar_inventario(self):
+        if not hasattr(self, "tbl_inventario"):
+            return
+        self._actualizar_ui_candado_inventario()
+        simbolo = self.config.get("regional", "simbolo_moneda", "$")
+
+        resumen = self.service.obtener_resumen_inventario()
+        self.lbl_inv_total.setText(str(resumen["total_productos"]))
+        self.lbl_inv_unidades.setText(f"{resumen['total_unidades']} unidades disponibles")
+
+        alertas_tot = resumen["stock_bajo"] + resumen["agotados"]
+        self.lbl_inv_alertas.setText(str(alertas_tot))
+        if alertas_tot > 0:
+            self.lbl_inv_alertas_sub.setText(
+                f"{resumen['agotados']} agotados · {resumen['stock_bajo']} con stock bajo"
+            )
+        else:
+            self.lbl_inv_alertas_sub.setText("Todo con existencia suficiente")
+
+        self.lbl_inv_costo.setText(f"{simbolo}{resumen['valor_costo']:,.2f}")
+        self.lbl_inv_venta.setText(f"{simbolo}{resumen['valor_venta']:,.2f}")
+        self.lbl_inv_ganancia.setText(
+            f"Ganancia est.: {simbolo}{resumen['ganancia_potencial']:,.2f}"
+        )
+
+        productos = self.service.listar_inventario(
+            busqueda=self.txt_buscar_inv.text(),
+            categoria=self.cmb_inv_cat.currentText(),
+            filtro_stock=self.cmb_inv_stock.currentText(),
+        )
+
+        self.tbl_inventario.setRowCount(0)
+        for i, p in enumerate(productos):
+            self.tbl_inventario.insertRow(i)
+            pid = int(p["id"])
+            stock = int(p.get("stock") or 0)
+            stock_min = int(
+                p.get("stock_minimo") if p.get("stock_minimo") is not None else 2
+            )
+            if stock <= 0:
+                txt_stock = "0 (Agotado)"
+                color_stock = QColor("#dc2626")
+            elif stock <= stock_min:
+                txt_stock = f"{stock} (Bajo)"
+                color_stock = QColor("#d97706")
+            else:
+                txt_stock = str(stock)
+                color_stock = None
+
+            marca_ub = str(p.get("marca_modelo") or "").strip()
+            ubic = str(p.get("ubicacion") or "").strip()
+            detalle_mm = f"{marca_ub} · [{ubic}]" if (marca_ub and ubic) else (marca_ub or ubic or "—")
+
             vals = [
-                f"#{int(n.get('folio') or 0):04d}",
-                n.get("cliente_nombre", ""),
-                n.get("telefono", ""),
-                n.get("tipo", ""),
-                n.get("fecha", ""),
-                n.get("mensaje", ""),
+                str(pid),
+                p.get("codigo") or "—",
+                p.get("nombre", ""),
+                p.get("categoria", ""),
+                detalle_mm,
+                txt_stock,
+                f"{simbolo}{float(p.get('costo_compra') or 0.0):,.2f}",
+                f"{simbolo}{float(p.get('precio_venta') or 0.0):,.2f}",
             ]
-            for c, v in enumerate(vals):
-                self.tbl_wa.setItem(i, c, QTableWidgetItem(v))
+            for c, val in enumerate(vals):
+                item = QTableWidgetItem(val)
+                if c == 5 and color_stock is not None:
+                    item.setForeground(color_stock)
+                self.tbl_inventario.setItem(i, c, item)
+
+            self.tbl_inventario.setCellWidget(
+                i, 8, self._crear_botones_inventario(pid)
+            )
+
+    def _editar_inventario_doble_clic(self, item: QTableWidgetItem):
+        fila = item.row()
+        id_item = self.tbl_inventario.item(fila, 0)
+        if id_item and id_item.text().isdigit():
+            self._editar_producto_inventario(int(id_item.text()))
+
+    def _dialogo_producto_inventario(self, actual: dict | None = None) -> dict | None:
+        es_edicion = actual is not None
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Editar producto" if es_edicion else "Agregar producto al inventario")
+        dlg.setMinimumWidth(460)
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(20, 16, 20, 16)
+        lay.setSpacing(10)
+
+        form = QFormLayout()
+        form.setSpacing(8)
+
+        txt_codigo = QLineEdit((actual or {}).get("codigo", ""))
+        txt_codigo.setPlaceholderText("Ej. PAN-IP11, BAT-A54, CAB-TC (opcional)")
+
+        txt_nombre = QLineEdit((actual or {}).get("nombre", ""))
+        txt_nombre.setPlaceholderText("Ej. Pantalla iPhone 11 Incell / Cable Tipo C")
+
+        cmb_cat = QComboBox()
+        cmb_cat.setEditable(True)
+        cmb_cat.setInsertPolicy(QComboBox.NoInsert)
+        cmb_cat.addItems(CATEGORIAS_INVENTARIO)
+        cat_ini = (actual or {}).get("categoria", "Refacciones")
+        if cat_ini:
+            cmb_cat.setCurrentText(cat_ini)
+
+        txt_mm = QLineEdit((actual or {}).get("marca_modelo", ""))
+        txt_mm.setPlaceholderText("Ej. Apple iPhone 11 / Samsung A54 / Universal")
+
+        spn_stock = QSpinBox()
+        spn_stock.setRange(0, 999999)
+        spn_stock.setValue(int((actual or {}).get("stock") or 0))
+
+        spn_min = QSpinBox()
+        spn_min.setRange(0, 999999)
+        spn_min.setValue(
+            int(actual["stock_minimo"])
+            if actual and actual.get("stock_minimo") is not None
+            else 2
+        )
+
+        spn_costo = QDoubleSpinBox()
+        spn_costo.setRange(0, 999999)
+        spn_costo.setDecimals(2)
+        spn_costo.setValue(float((actual or {}).get("costo_compra") or 0.0))
+
+        spn_precio = QDoubleSpinBox()
+        spn_precio.setRange(0, 999999)
+        spn_precio.setDecimals(2)
+        spn_precio.setValue(float((actual or {}).get("precio_venta") or 0.0))
+
+        lbl_margen = QLabel("$0.00")
+        lbl_margen.setObjectName("CardSub")
+
+        cmb_ubic = QComboBox()
+        cmb_ubic.setEditable(True)
+        cmb_ubic.setInsertPolicy(QComboBox.NoInsert)
+        cmb_ubic.addItem("")
+        for u in self.service.listar_ubicaciones(solo_activas=True):
+            cmb_ubic.addItem(u["nombre"])
+        cmb_ubic.setCurrentText((actual or {}).get("ubicacion", ""))
+
+        txt_notas = QLineEdit((actual or {}).get("notas", ""))
+        txt_notas.setPlaceholderText("Proveedor, calidad o notas adicionales")
+
+        simbolo = self.config.get("regional", "simbolo_moneda", "$")
+
+        def _actualizar_margen():
+            util = spn_precio.value() - spn_costo.value()
+            lbl_margen.setText(f"{simbolo}{util:,.2f} por unidad")
+
+        spn_costo.valueChanged.connect(_actualizar_margen)
+        spn_precio.valueChanged.connect(_actualizar_margen)
+        _actualizar_margen()
+
+        form.addRow("Código / SKU:", txt_codigo)
+        form.addRow("Producto *:", txt_nombre)
+        form.addRow("Categoría:", cmb_cat)
+        form.addRow("Marca / Modelo:", txt_mm)
+        form.addRow("Stock disponible:", spn_stock)
+        form.addRow("Alerta stock mínimo:", spn_min)
+        form.addRow("Costo compra:", spn_costo)
+        form.addRow("Precio venta:", spn_precio)
+        form.addRow("Utilidad unitaria:", lbl_margen)
+        form.addRow("Ubicación:", cmb_ubic)
+        form.addRow("Notas / Proveedor:", txt_notas)
+        lay.addLayout(form)
+
+        resultado: dict = {}
+
+        fila_btns = QHBoxLayout()
+        btn_cancelar = QPushButton("Cancelar")
+        btn_cancelar.clicked.connect(dlg.reject)
+        btn_guardar = QPushButton("Guardar cambios" if es_edicion else "Guardar producto")
+        btn_guardar.setObjectName("PrimaryBtn")
+        btn_guardar.setMinimumWidth(150)
+        fila_btns.addStretch()
+        fila_btns.addWidget(btn_cancelar)
+        fila_btns.addWidget(btn_guardar)
+        lay.addLayout(fila_btns)
+
+        def _confirmar():
+            if not txt_nombre.text().strip():
+                QMessageBox.warning(
+                    dlg, "Campo requerido", "Escribe el nombre del producto o refacción."
+                )
+                return
+            resultado.update(
+                {
+                    "codigo": txt_codigo.text().strip(),
+                    "nombre": txt_nombre.text().strip(),
+                    "categoria": cmb_cat.currentText().strip() or "Refacciones",
+                    "marca_modelo": txt_mm.text().strip(),
+                    "stock": spn_stock.value(),
+                    "stock_minimo": spn_min.value(),
+                    "costo_compra": spn_costo.value(),
+                    "precio_venta": spn_precio.value(),
+                    "ubicacion": cmb_ubic.currentText().strip(),
+                    "notas": txt_notas.text().strip(),
+                }
+            )
+            dlg.accept()
+
+        btn_guardar.clicked.connect(_confirmar)
+        if dlg.exec() == QDialog.Accepted and resultado:
+            return resultado
+        return None
+
+    def _agregar_producto_inventario(self):
+        if not self._asegurar_edicion_inventario():
+            return
+        datos = self._dialogo_producto_inventario(None)
+        if not datos:
+            return
+        self.service.guardar_producto_inventario(datos)
+        self.refrescar_inventario()
+
+    def _editar_producto_inventario(self, producto_id: int):
+        if not self._asegurar_edicion_inventario():
+            return
+        actual = self.service.obtener_producto_inventario(producto_id)
+        if not actual:
+            QMessageBox.warning(self, "No encontrado", "El producto ya no existe.")
+            return
+        datos = self._dialogo_producto_inventario(actual)
+        if not datos:
+            return
+        if self.service.actualizar_producto_inventario(producto_id, datos):
+            self.refrescar_inventario()
+        else:
+            QMessageBox.warning(self, "No se guardó", "El producto ya no existe.")
+
+    def _ajustar_stock_rapido(self, producto_id: int, delta: int):
+        if not self._asegurar_edicion_inventario():
+            return
+        if self.service.ajustar_stock_inventario(producto_id, delta) is None:
+            QMessageBox.warning(self, "No encontrado", "El producto ya no existe.")
+            return
+        self.refrescar_inventario()
+
+    def _eliminar_producto_inventario(self, producto_id: int):
+        if not self._asegurar_edicion_inventario():
+            return
+        actual = self.service.obtener_producto_inventario(producto_id)
+        if not actual:
+            QMessageBox.warning(self, "No encontrado", "El producto ya no existe.")
+            return
+        resp = QMessageBox.question(
+            self,
+            "Eliminar del inventario",
+            f"¿Eliminar '{actual.get('nombre', '')}' del inventario?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if resp != QMessageBox.StandardButton.Yes:
+            return
+        if self.service.eliminar_producto_inventario(producto_id):
+            self.refrescar_inventario()
+        else:
+            QMessageBox.warning(self, "No se eliminó", "El producto ya no existe.")
+
+    # ------------------------------------------
+    # 5. UTILIDADES ANDROID (ADB, MALWARE Y DNS)
+    # ------------------------------------------
+    def _build_utilidades_android_tab(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(22, 16, 22, 16)
+        lay.setSpacing(10)
+
+        head_row = QHBoxLayout()
+        title_box = QVBoxLayout()
+        title_box.setSpacing(2)
+        lbl_t = QLabel("Utilidades Android (ADB)")
+        lbl_t.setObjectName("Title")
+        lbl_bc = QLabel("Principal › Utilidades Android › Diagnósticos, Malware y DNS")
+        lbl_bc.setObjectName("Breadcrumb")
+        title_box.addWidget(lbl_t)
+        title_box.addWidget(lbl_bc)
+
+        btn_guia_adb = QPushButton("¿Cómo conectar por USB?")
+        btn_guia_adb.clicked.connect(self._mostrar_guia_adb)
+        btn_elegir_adb = QPushButton("Elegir adb.exe")
+        btn_elegir_adb.clicked.connect(self._elegir_adb_manual)
+
+        head_row.addLayout(title_box)
+        head_row.addStretch()
+        head_row.addWidget(btn_elegir_adb)
+        head_row.addWidget(btn_guia_adb)
+        lay.addLayout(head_row)
+
+        # Barra superior compartida de conexión ADB
+        conn_card = QFrame()
+        conn_card.setObjectName("SubBar")
+        conn_lay = QHBoxLayout(conn_card)
+        conn_lay.setContentsMargins(14, 10, 14, 10)
+        conn_lay.setSpacing(8)
+
+        self.lbl_adb_motor = QLabel("ADB:")
+        self.lbl_adb_motor.setObjectName("FolioBadge")
+        conn_lay.addWidget(self.lbl_adb_motor)
+
+        self.cmb_adb_dispositivos = QComboBox()
+        self.cmb_adb_dispositivos.setMinimumWidth(330)
+        self.cmb_adb_dispositivos.addItem(
+            "-- Pulsa «Detectar equipos» con el celular conectado --", None
+        )
+        conn_lay.addWidget(self.cmb_adb_dispositivos, 1)
+
+        btn_detectar = QPushButton("Detectar equipos")
+        btn_detectar.setObjectName("PrimaryBtn")
+        btn_detectar.setMinimumWidth(145)
+        btn_detectar.clicked.connect(lambda: self._detectar_equipos_adb(silencioso=False))
+        conn_lay.addWidget(btn_detectar)
+
+        btn_reiniciar_adb = QPushButton("Reiniciar ADB")
+        btn_reiniciar_adb.clicked.connect(self._reiniciar_servidor_adb)
+        conn_lay.addWidget(btn_reiniciar_adb)
+
+        lay.addWidget(conn_card)
+
+        # Subpestañas internas dentro de Utilidades Android
+        tabs_android = QTabWidget()
+        tabs_android.addTab(self._build_subtab_diagnostico_adb(), "Diagnóstico ADB")
+        tabs_android.addTab(self._build_subtab_malware_adb(), "Remoción de Malware")
+        tabs_android.addTab(self._build_subtab_dns_adb(), "Anclar DNS")
+        lay.addWidget(tabs_android, 1)
+
+        # Registro compacto de operaciones ADB
+        log_box = QFrame()
+        log_box.setObjectName("Card")
+        log_lay = QVBoxLayout(log_box)
+        log_lay.setContentsMargins(12, 8, 12, 8)
+        log_lay.setSpacing(4)
+        log_head = QHBoxLayout()
+        lbl_reg = QLabel("Registro de actividad ADB")
+        lbl_reg.setObjectName("CardSub")
+        btn_limpiar_log = QPushButton("Limpiar registro")
+        btn_limpiar_log.setMaximumHeight(26)
+        log_head.addWidget(lbl_reg)
+        log_head.addStretch()
+        log_head.addWidget(btn_limpiar_log)
+        log_lay.addLayout(log_head)
+
+        self.txt_adb_log = QPlainTextEdit()
+        self.txt_adb_log.setReadOnly(True)
+        self.txt_adb_log.setMaximumHeight(82)
+        self.txt_adb_log.setPlaceholderText(
+            "Aquí se mostrarán los resultados de diagnóstico, desinstalaciones y cambios de DNS..."
+        )
+        btn_limpiar_log.clicked.connect(self.txt_adb_log.clear)
+        log_lay.addWidget(self.txt_adb_log)
+        lay.addWidget(log_box)
+
+        self._actualizar_estado_binario_adb()
+        return w
+
+    def _build_subtab_diagnostico_adb(self) -> QWidget:
+        p = QWidget()
+        lay = QVBoxLayout(p)
+        lay.setContentsMargins(14, 12, 14, 12)
+        lay.setSpacing(10)
+
+        acciones = QHBoxLayout()
+        acciones.setSpacing(8)
+
+        btn_diag = QPushButton("Ejecutar diagnóstico completo")
+        btn_diag.setObjectName("PrimaryBtn")
+        btn_diag.setMinimumWidth(215)
+        btn_diag.clicked.connect(self._ejecutar_diagnostico_adb)
+
+        btn_cap = QPushButton("Captura de pantalla")
+        btn_cap.clicked.connect(self._capturar_pantalla_adb)
+
+        btn_copiar = QPushButton("Copiar reporte")
+        btn_copiar.clicked.connect(self._copiar_reporte_adb)
+
+        btn_orden = QPushButton("Enviar a Nueva Orden")
+        btn_orden.clicked.connect(self._pasar_diag_a_nueva_orden)
+
+        self.cmb_adb_reboot = QComboBox()
+        self.cmb_adb_reboot.addItems(
+            ["Reinicio normal", "Modo Recovery", "Modo Bootloader / Fastboot"]
+        )
+        btn_reboot = QPushButton("Reiniciar equipo")
+        btn_reboot.clicked.connect(self._reiniciar_equipo_adb)
+
+        acciones.addWidget(btn_diag)
+        acciones.addWidget(btn_cap)
+        acciones.addWidget(btn_copiar)
+        acciones.addWidget(btn_orden)
+        acciones.addStretch()
+        acciones.addWidget(self.cmb_adb_reboot)
+        acciones.addWidget(btn_reboot)
+        lay.addLayout(acciones)
+
+        cards = QHBoxLayout()
+        cards.setSpacing(10)
+        c1, self.lbl_diag_modelo, self.lbl_diag_serie = _make_metric_card(
+            "Equipo detectado", "—", "Serie / IMEI pendiente"
+        )
+        c2, self.lbl_diag_android, self.lbl_diag_parche = _make_metric_card(
+            "Sistema Android", "—", "Parche de seguridad"
+        )
+        c3, self.lbl_diag_bat, self.lbl_diag_bat_sub = _make_metric_card(
+            "Batería y Temperatura", "—", "Salud y voltaje"
+        )
+        c4, self.lbl_diag_mem, self.lbl_diag_ram = _make_metric_card(
+            "Almacenamiento", "—", "Memoria RAM"
+        )
+        for c in (c1, c2, c3, c4):
+            cards.addWidget(c)
+        lay.addLayout(cards)
+
+        self.txt_diag_reporte = QPlainTextEdit()
+        self.txt_diag_reporte.setReadOnly(True)
+        self.txt_diag_reporte.setPlaceholderText(
+            "Conecta el equipo Android con Depuración USB activada y pulsa "
+            "«Ejecutar diagnóstico completo» para ver marca, modelo, batería, temperatura, "
+            "almacenamiento, RAM, resolución, IMEI y estado de DNS."
+        )
+        lay.addWidget(self.txt_diag_reporte, 1)
+        return p
+
+    def _build_subtab_malware_adb(self) -> QWidget:
+        p = QWidget()
+        lay = QVBoxLayout(p)
+        lay.setContentsMargins(14, 12, 14, 12)
+        lay.setSpacing(10)
+
+        top_bar = QHBoxLayout()
+        top_bar.setSpacing(8)
+
+        btn_escanear = QPushButton("Escanear aplicaciones")
+        btn_escanear.setObjectName("PrimaryBtn")
+        btn_escanear.setMinimumWidth(175)
+        btn_escanear.clicked.connect(self._escanear_malware_adb)
+
+        btn_en_pantalla = QPushButton("¿Qué app está en pantalla?")
+        btn_en_pantalla.setToolTip(
+            "Útil cuando aparece un anuncio invasivo: identifica de inmediato qué paquete lo muestra."
+        )
+        btn_en_pantalla.clicked.connect(self._detectar_app_pantalla_adb)
+
+        self.cmb_filtro_malware = QComboBox()
+        self.cmb_filtro_malware.addItems(
+            [
+                "Todas las apps de usuario",
+                "Solo sospechosas / revisar",
+                "Con permiso sobre otras apps",
+            ]
+        )
+        self.cmb_filtro_malware.currentTextChanged.connect(self._refrescar_tabla_malware)
+
+        self.txt_buscar_malware = QLineEdit()
+        self.txt_buscar_malware.setPlaceholderText("Filtrar paquete (ej. clean, boost, flash)...")
+        self.txt_buscar_malware.textChanged.connect(self._refrescar_tabla_malware)
+
+        top_bar.addWidget(btn_escanear)
+        top_bar.addWidget(btn_en_pantalla)
+        top_bar.addWidget(self.cmb_filtro_malware)
+        top_bar.addWidget(self.txt_buscar_malware, 1)
+        lay.addLayout(top_bar)
+
+        mid_bar = QHBoxLayout()
+        self.lbl_resumen_malware = QLabel(
+            "Escaneo pendiente. Se analizan únicamente apps instaladas por el usuario (protegiendo el sistema Android)."
+        )
+        self.lbl_resumen_malware.setObjectName("CardSub")
+
+        btn_sel_sosp = QPushButton("Marcar sospechosas")
+        btn_sel_sosp.clicked.connect(self._marcar_sospechosas_malware)
+        btn_desel = QPushButton("Desmarcar todo")
+        btn_desel.clicked.connect(self._desmarcar_todas_malware)
+
+        mid_bar.addWidget(self.lbl_resumen_malware, 1)
+        mid_bar.addWidget(btn_sel_sosp)
+        mid_bar.addWidget(btn_desel)
+        lay.addLayout(mid_bar)
+
+        self.tbl_adb_malware = QTableWidget(0, 5)
+        self.tbl_adb_malware.setHorizontalHeaderLabels(
+            [
+                "MARCAR",
+                "NIVEL DE RIESGO",
+                "PAQUETE (ID ANDROID)",
+                "ESTADO",
+                "MOTIVO / PERMISOS DETECTADOS",
+            ]
+        )
+        _configurar_tabla(self.tbl_adb_malware, stretch_col=4)
+        self.tbl_adb_malware.setColumnWidth(0, 75)
+        self.tbl_adb_malware.setColumnWidth(1, 150)
+        self.tbl_adb_malware.setColumnWidth(2, 260)
+        self.tbl_adb_malware.setColumnWidth(3, 100)
+        lay.addWidget(self.tbl_adb_malware, 1)
+
+        bot_bar = QHBoxLayout()
+        bot_bar.setSpacing(8)
+
+        btn_chrome = QPushButton("Limpiar notificaciones spam de Chrome")
+        btn_chrome.clicked.connect(self._limpiar_spam_chrome_adb)
+
+        btn_quitar_ov = QPushButton("Bloquear anuncios flotantes")
+        btn_quitar_ov.clicked.connect(self._bloquear_anuncios_seleccionados)
+
+        btn_desactivar = QPushButton("Desactivar marcadas")
+        btn_desactivar.clicked.connect(self._desactivar_malware_seleccionado)
+
+        btn_desinstalar = QPushButton("Desinstalar marcadas")
+        btn_desinstalar.setStyleSheet(ESTILO_BOTON_PELIGRO)
+        btn_desinstalar.setMinimumWidth(165)
+        btn_desinstalar.clicked.connect(self._desinstalar_malware_seleccionado)
+
+        bot_bar.addWidget(btn_chrome)
+        bot_bar.addStretch()
+        bot_bar.addWidget(btn_quitar_ov)
+        bot_bar.addWidget(btn_desactivar)
+        bot_bar.addWidget(btn_desinstalar)
+        lay.addLayout(bot_bar)
+        return p
+
+    def _build_subtab_dns_adb(self) -> QWidget:
+        p = QWidget()
+        lay = QVBoxLayout(p)
+        lay.setContentsMargins(14, 12, 14, 12)
+        lay.setSpacing(12)
+
+        estado_card = QFrame()
+        estado_card.setObjectName("SubBar")
+        est_lay = QHBoxLayout(estado_card)
+        est_lay.setContentsMargins(16, 12, 16, 12)
+
+        est_info = QVBoxLayout()
+        lbl_est_t = QLabel("Estado actual de DNS Privado en el equipo")
+        lbl_est_t.setObjectName("CardSub")
+        self.lbl_dns_actual = QLabel("Sin consultar — conecta un equipo y pulsa «Leer DNS actual»")
+        self.lbl_dns_actual.setObjectName("FolioBadge")
+        est_info.addWidget(lbl_est_t)
+        est_info.addWidget(self.lbl_dns_actual)
+
+        btn_leer_dns = QPushButton("Leer DNS actual")
+        btn_leer_dns.clicked.connect(self._consultar_dns_actual_adb)
+
+        est_lay.addLayout(est_info, 1)
+        est_lay.addWidget(btn_leer_dns)
+        lay.addWidget(estado_card)
+
+        form_card = QFrame()
+        form_card.setObjectName("Card")
+        form_lay = QVBoxLayout(form_card)
+        form_lay.setContentsMargins(18, 16, 18, 16)
+        form_lay.setSpacing(12)
+
+        form = QFormLayout()
+        form.setSpacing(10)
+
+        self.cmb_dns_preset = QComboBox()
+        for prov in PROVEEDORES_DNS:
+            self.cmb_dns_preset.addItem(prov["nombre"], prov)
+        self.cmb_dns_preset.currentIndexChanged.connect(self._al_cambiar_preset_dns)
+
+        self.lbl_dns_desc = QLabel("")
+        self.lbl_dns_desc.setObjectName("CardSub")
+        self.lbl_dns_desc.setWordWrap(True)
+
+        self.txt_dns_hostname = QLineEdit()
+        self.txt_dns_hostname.setPlaceholderText("Ej. dns.adguard-dns.com o one.one.one.one")
+
+        form.addRow("Proveedor recomendado:", self.cmb_dns_preset)
+        form.addRow("Función:", self.lbl_dns_desc)
+        form.addRow("Servidor DNS (TLS):", self.txt_dns_hostname)
+        form_lay.addLayout(form)
+
+        btns_dns = QHBoxLayout()
+        btns_dns.setSpacing(8)
+
+        btn_anclar = QPushButton("Anclar DNS en el equipo")
+        btn_anclar.setObjectName("PrimaryBtn")
+        btn_anclar.setMinimumWidth(185)
+        btn_anclar.clicked.connect(self._anclar_dns_adb)
+
+        btn_probar = QPushButton("Probar conexión DNS")
+        btn_probar.clicked.connect(self._probar_dns_adb)
+
+        btn_auto = QPushButton("Restaurar DNS automático")
+        btn_auto.clicked.connect(self._restaurar_dns_adb)
+
+        btn_off = QPushButton("Desactivar DNS privado")
+        btn_off.clicked.connect(self._desactivar_dns_adb)
+
+        btns_dns.addWidget(btn_anclar)
+        btns_dns.addWidget(btn_probar)
+        btns_dns.addStretch()
+        btns_dns.addWidget(btn_auto)
+        btns_dns.addWidget(btn_off)
+        form_lay.addLayout(btns_dns)
+
+        nota_dns = QLabel(
+            "Nota técnica: En Android 9.0 o superior, el DNS anclado queda guardado globalmente "
+            "tanto para redes Wi-Fi como para Datos móviles y permanece activo aunque el equipo "
+            "se apague o reinicie. Ideal para bloquear publicidad emergente tras una limpieza de malware."
+        )
+        nota_dns.setObjectName("CardSub")
+        nota_dns.setWordWrap(True)
+        form_lay.addWidget(nota_dns)
+
+        lay.addWidget(form_card)
+        lay.addStretch()
+
+        self._al_cambiar_preset_dns()
+        return p
+
+    # --- Métodos auxiliares de Utilidades Android ---
+    def _log_adb(self, mensaje: str):
+        if not hasattr(self, "txt_adb_log"):
+            return
+        hora = datetime.now().strftime("%H:%M:%S")
+        self.txt_adb_log.appendPlainText(f"[{hora}] {mensaje}")
+
+    def _ejecutar_con_espera(self, fn):
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        QApplication.processEvents()
+        try:
+            return fn()
+        finally:
+            QApplication.restoreOverrideCursor()
+
+    def _actualizar_estado_binario_adb(self):
+        if not hasattr(self, "lbl_adb_motor"):
+            return
+        ok, ruta = self.adb.resolver_ruta_adb()
+        if ok:
+            self.lbl_adb_motor.setText("ADB listo:")
+            self.lbl_adb_motor.setToolTip(ruta)
+        else:
+            self.lbl_adb_motor.setText("ADB no localizado:")
+            self.lbl_adb_motor.setToolTip("Pulsa 'Elegir adb.exe' si tienes platform-tools en otra carpeta.")
+
+    def _elegir_adb_manual(self):
+        filtro = "Ejecutable ADB (adb.exe);;Todos los archivos (*)" if os.name == "nt" else "Ejecutable ADB (adb);;Todos (*)"
+        ruta, _ = QFileDialog.getOpenFileName(self, "Seleccionar ejecutable ADB", "", filtro)
+        if not ruta:
+            return
+        self.adb.establecer_ruta_personalizada(ruta)
+        self.config.set("android", "ruta_adb", ruta)
+        self.config.save()
+        self._actualizar_estado_binario_adb()
+        self._log_adb(f"Ruta ADB configurada: {ruta}")
+        self._detectar_equipos_adb(silencioso=False)
+
+    def _mostrar_guia_adb(self):
+        QMessageBox.information(
+            self,
+            "Cómo conectar un equipo Android por ADB",
+            "1. En el celular, abre Ajustes › Acerca del teléfono.\n"
+            "2. Toca 7 veces seguidas en «Número de compilación» (en Xiaomi: «Versión de MIUI / HyperOS»).\n"
+            "3. Entra a Ajustes › Sistema › Opciones de desarrollador.\n"
+            "4. Activa «Depuración por USB» (en Xiaomi activa también «Depuración USB - Ajustes de seguridad» si aparece).\n"
+            "5. Conecta el cable USB de datos a la PC y pulsa «Detectar equipos».\n"
+            "6. En la pantalla del teléfono, marca «Permitir siempre desde esta computadora» y toca Permitir.",
+        )
+
+    def _detectar_equipos_adb(self, silencioso: bool = False) -> str | None:
+        info = self._ejecutar_con_espera(self.adb.listar_dispositivos)
+        self._actualizar_estado_binario_adb()
+
+        seleccion_previa = self.cmb_adb_dispositivos.currentData()
+        serial_previo = seleccion_previa.get("serial") if isinstance(seleccion_previa, dict) else None
+
+        self.cmb_adb_dispositivos.blockSignals(True)
+        self.cmb_adb_dispositivos.clear()
+        dispositivos = info.get("dispositivos", [])
+        if not dispositivos:
+            self.cmb_adb_dispositivos.addItem("-- Sin equipos detectados --", None)
+        else:
+            idx_elegir = 0
+            for i, d in enumerate(dispositivos):
+                texto = f"{d['modelo']} [{d['serial']}] — {d['estado_legible']}"
+                self.cmb_adb_dispositivos.addItem(texto, d)
+                if serial_previo and d["serial"] == serial_previo:
+                    idx_elegir = i
+                elif d["estado"] == "device" and idx_elegir == 0:
+                    idx_elegir = i
+            self.cmb_adb_dispositivos.setCurrentIndex(idx_elegir)
+        self.cmb_adb_dispositivos.blockSignals(False)
+
+        self._log_adb(info.get("mensaje", ""))
+        if not silencioso:
+            if not info.get("adb_ok"):
+                QMessageBox.warning(self, "ADB no encontrado", info.get("mensaje", ""))
+            elif not dispositivos:
+                QMessageBox.information(self, "Sin equipos", info.get("mensaje", ""))
+
+        actual = self.cmb_adb_dispositivos.currentData()
+        if isinstance(actual, dict) and actual.get("estado") == "device":
+            return actual["serial"]
+        return None
+
+    def _reiniciar_servidor_adb(self):
+        ok, msg = self._ejecutar_con_espera(self.adb.reiniciar_servidor)
+        self._log_adb(msg)
+        if ok:
+            self._detectar_equipos_adb(silencioso=True)
+            QMessageBox.information(self, "ADB reiniciado", msg)
+        else:
+            QMessageBox.warning(self, "ADB", msg)
+
+    def _serial_adb_listo(self) -> str | None:
+        actual = self.cmb_adb_dispositivos.currentData()
+        if not isinstance(actual, dict):
+            serial_auto = self._detectar_equipos_adb(silencioso=True)
+            if serial_auto:
+                return serial_auto
+            actual = self.cmb_adb_dispositivos.currentData()
+
+        if not isinstance(actual, dict):
+            QMessageBox.information(
+                self,
+                "Conecta un equipo Android",
+                "No se detectó ningún equipo conectado por USB.\n\n"
+                "Verifica el cable de datos y activa «Depuración por USB» en Opciones de desarrollador.",
+            )
+            return None
+
+        if actual.get("estado") != "device":
+            QMessageBox.warning(
+                self,
+                "Equipo no autorizado o no listo",
+                f"Estado actual del equipo ({actual.get('serial')}): {actual.get('estado_legible')}.\n\n"
+                "Desbloquea el celular y acepta la ventana «Permitir depuración por USB», "
+                "luego vuelve a pulsar «Detectar equipos».",
+            )
+            return None
+
+        return str(actual["serial"])
+
+    # --- Acciones de Diagnóstico ADB ---
+    def _ejecutar_diagnostico_adb(self):
+        serial = self._serial_adb_listo()
+        if not serial:
+            return
+        res = self._ejecutar_con_espera(lambda: self.adb.diagnosticar_equipo(serial))
+        if not res.get("ok"):
+            err = res.get("error", "Error durante el diagnóstico.")
+            self._log_adb(f"Error diagnóstico: {err}")
+            QMessageBox.warning(self, "Diagnóstico ADB", err)
+            return
+
+        self._ultimo_diag_adb = res
+        self.lbl_diag_modelo.setText(f"{res['marca']} {res['modelo']}".strip())
+        self.lbl_diag_serie.setText(f"Serie: {res['serie_real']}")
+        self.lbl_diag_android.setText(f"Android {res['android_version']} (API {res['sdk_int']})")
+        self.lbl_diag_parche.setText(f"Parche: {res['parche_seguridad']}")
+
+        bat = res["bateria"]
+        nivel_str = f"{bat['nivel']}%" if bat["nivel"] >= 0 else "N/D"
+        temp_str = f"{bat['temperatura_c']} °C" if bat["temperatura_c"] > 0 else "N/D"
+        self.lbl_diag_bat.setText(f"{nivel_str} · {temp_str}")
+        self.lbl_diag_bat_sub.setText(f"{bat['salud']} · {bat['estado']}")
+
+        alm = res["almacenamiento"]
+        if alm.get("total_gb", 0) > 0:
+            self.lbl_diag_mem.setText(f"{alm['libre_gb']} GB libres / {alm['total_gb']} GB")
+        else:
+            self.lbl_diag_mem.setText("N/D")
+        self.lbl_diag_ram.setText(f"RAM: {res['ram'].get('resumen', 'N/D')}")
+
+        self.txt_diag_reporte.setPlainText(res["texto_reporte"])
+        dns_desc = res.get("dns", {}).get("descripcion_corta", "")
+        if dns_desc and hasattr(self, "lbl_dns_actual"):
+            self.lbl_dns_actual.setText(dns_desc)
+
+        self._log_adb(f"Diagnóstico completado para {res['marca']} {res['modelo']} ({serial}).")
+
+    def _capturar_pantalla_adb(self):
+        serial = self._serial_adb_listo()
+        if not serial:
+            return
+        carpeta = os.path.join(
+            os.path.dirname(os.path.abspath(self.db.db_path)), "capturas_adb"
+        )
+        marca_t = datetime.now().strftime("%Y%m%d_%H%M%S")
+        ruta = os.path.join(carpeta, f"captura_{marca_t}.png")
+        ok, detalle = self._ejecutar_con_espera(
+            lambda: self.adb.capturar_pantalla(serial, ruta)
+        )
+        if not ok:
+            self._log_adb(f"Error captura: {detalle}")
+            QMessageBox.warning(self, "Captura de pantalla", detalle)
+            return
+
+        self._log_adb(f"Captura guardada en {ruta}")
+        pm = QPixmap(ruta)
+        if not pm.isNull():
+            QApplication.clipboard().setPixmap(pm)
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Captura de pantalla del equipo")
+        dlg.setMinimumWidth(460)
+        lay = QVBoxLayout(dlg)
+        lbl_img = QLabel()
+        lbl_img.setAlignment(Qt.AlignCenter)
+        if not pm.isNull():
+            lbl_img.setPixmap(pm.scaled(380, 520, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        lay.addWidget(lbl_img, 1)
+        lbl_r = QLabel(f"Copiada al portapapeles y guardada en:\n{ruta}")
+        lbl_r.setObjectName("CardSub")
+        lbl_r.setWordWrap(True)
+        lay.addWidget(lbl_r)
+
+        btns = QHBoxLayout()
+        b_abrir = QPushButton("Abrir imagen")
+        b_abrir.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(ruta)))
+        b_carp = QPushButton("Abrir carpeta")
+        b_carp.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(ruta)))
+        )
+        b_cerrar = QPushButton("Cerrar")
+        b_cerrar.clicked.connect(dlg.accept)
+        for b in (b_abrir, b_carp, b_cerrar):
+            btns.addWidget(b)
+        lay.addLayout(btns)
+        dlg.exec()
+
+    def _copiar_reporte_adb(self):
+        texto = self.txt_diag_reporte.toPlainText().strip()
+        if not texto:
+            QMessageBox.information(
+                self, "Sin reporte", "Primero ejecuta el diagnóstico del equipo."
+            )
+            return
+        QApplication.clipboard().setText(texto)
+        self._log_adb("Reporte de diagnóstico copiado al portapapeles.")
+        QMessageBox.information(
+            self, "Copiado", "El reporte completo se copió al portapapeles."
+        )
+
+    def _pasar_diag_a_nueva_orden(self):
+        if not self._ultimo_diag_adb:
+            QMessageBox.information(
+                self,
+                "Sin diagnóstico",
+                "Primero ejecuta el diagnóstico completo para leer los datos del equipo.",
+            )
+            return
+        d = self._ultimo_diag_adb
+        self.no_cat.setCurrentText("Celulares")
+        self._actualizar_subcategorias_marca("Celulares")
+        self.no_marca.setCurrentText(d.get("marca", ""))
+        self.no_modelo.setText(d.get("modelo", ""))
+        imei_val = d.get("imei", "")
+        if imei_val and not imei_val.startswith("Protegido"):
+            self.no_imei.setText(imei_val)
+        else:
+            self.no_imei.setText(d.get("serie_real", ""))
+        bat = d.get("bateria", {})
+        resumen_tec = (
+            f"ADB: Android {d.get('android_version')} · Bat {bat.get('nivel', '?')}% "
+            f"({bat.get('salud', '')}, {bat.get('temperatura_c', 0)}°C) · "
+            f"Alm: {d.get('almacenamiento', {}).get('resumen', '')}"
+        )
+        self.no_notas.setPlainText(resumen_tec)
+        self.ir_a_seccion(1)
+        QMessageBox.information(
+            self,
+            "Datos cargados",
+            "Se copiaron marca, modelo, serie/IMEI y resumen técnico al formulario de Nueva Orden.",
+        )
+
+    def _reiniciar_equipo_adb(self):
+        serial = self._serial_adb_listo()
+        if not serial:
+            return
+        opcion = self.cmb_adb_reboot.currentText()
+        modo = ""
+        if "Recovery" in opcion:
+            modo = "recovery"
+        elif "Bootloader" in opcion:
+            modo = "bootloader"
+
+        resp = QMessageBox.question(
+            self,
+            "Reiniciar equipo",
+            f"¿Enviar orden de «{opcion}» al equipo conectado ({serial})?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if resp != QMessageBox.StandardButton.Yes:
+            return
+        ok, msg = self._ejecutar_con_espera(lambda: self.adb.reiniciar_equipo(serial, modo))
+        self._log_adb(msg)
+        if ok:
+            QMessageBox.information(self, "Reinicio enviado", msg)
+        else:
+            QMessageBox.warning(self, "No se pudo reiniciar", msg)
+
+    # --- Acciones de Remoción de Malware ---
+    def _escanear_malware_adb(self):
+        serial = self._serial_adb_listo()
+        if not serial:
+            return
+        res = self._ejecutar_con_espera(lambda: self.adb.escanear_malware(serial))
+        if not res.get("ok"):
+            err = res.get("error", "No se pudo completar el escaneo.")
+            self._log_adb(f"Error escaneo malware: {err}")
+            QMessageBox.warning(self, "Escaneo de aplicaciones", err)
+            return
+
+        self._apps_malware_cache = res.get("apps", [])
+        self.lbl_resumen_malware.setText(
+            f"Apps de usuario analizadas: {res['total']} · "
+            f"Sospechosas / a revisar: {res['sospechosas']} "
+            f"(Riesgo alto: {res['alto_riesgo']})"
+        )
+        self._refrescar_tabla_malware()
+        self._log_adb(
+            f"Escaneo finalizado: {res['total']} apps de usuario, {res['sospechosas']} sospechosas."
+        )
+
+    def _refrescar_tabla_malware(self):
+        if not hasattr(self, "tbl_adb_malware"):
+            return
+        filtro = self.cmb_filtro_malware.currentText()
+        busq = self.txt_buscar_malware.text().strip().lower()
+
+        lista = self._apps_malware_cache
+        if filtro == "Solo sospechosas / revisar":
+            lista = [a for a in lista if a["prioridad"] >= 1]
+        elif filtro == "Con permiso sobre otras apps":
+            lista = [a for a in lista if a.get("tiene_overlay")]
+
+        if busq:
+            lista = [
+                a
+                for a in lista
+                if busq in a["package"].lower() or busq in a["motivos"].lower()
+            ]
+
+        self.tbl_adb_malware.setRowCount(0)
+        for i, app_info in enumerate(lista):
+            self.tbl_adb_malware.insertRow(i)
+
+            chk_item = QTableWidgetItem("")
+            chk_item.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+            chk_item.setCheckState(Qt.Unchecked)
+            chk_item.setData(Qt.UserRole, app_info["package"])
+            self.tbl_adb_malware.setItem(i, 0, chk_item)
+
+            riesgo_item = QTableWidgetItem(app_info["riesgo"])
+            if app_info["prioridad"] >= 2:
+                riesgo_item.setForeground(QColor("#dc2626"))
+            elif app_info["prioridad"] == 1:
+                riesgo_item.setForeground(QColor("#d97706"))
+            self.tbl_adb_malware.setItem(i, 1, riesgo_item)
+
+            self.tbl_adb_malware.setItem(i, 2, QTableWidgetItem(app_info["package"]))
+            self.tbl_adb_malware.setItem(i, 3, QTableWidgetItem(app_info["estado"]))
+            self.tbl_adb_malware.setItem(i, 4, QTableWidgetItem(app_info["motivos"]))
+
+    def _marcar_sospechosas_malware(self):
+        marcadas = 0
+        for fila in range(self.tbl_adb_malware.rowCount()):
+            riesgo_txt = self.tbl_adb_malware.item(fila, 1).text()
+            chk = self.tbl_adb_malware.item(fila, 0)
+            if chk and ("ALTO" in riesgo_txt or "REVISAR" in riesgo_txt):
+                chk.setCheckState(Qt.Checked)
+                marcadas += 1
+        if marcadas == 0:
+            QMessageBox.information(
+                self, "Sin sospechosas", "No hay aplicaciones sospechosas en la lista actual."
+            )
+
+    def _desmarcar_todas_malware(self):
+        for fila in range(self.tbl_adb_malware.rowCount()):
+            chk = self.tbl_adb_malware.item(fila, 0)
+            if chk:
+                chk.setCheckState(Qt.Unchecked)
+
+    def _paquetes_malware_seleccionados(self) -> list[str]:
+        seleccionados: list[str] = []
+        for fila in range(self.tbl_adb_malware.rowCount()):
+            chk = self.tbl_adb_malware.item(fila, 0)
+            if chk and chk.checkState() == Qt.Checked:
+                pkg = chk.data(Qt.UserRole)
+                if pkg:
+                    seleccionados.append(str(pkg))
+        return seleccionados
+
+    def _detectar_app_pantalla_adb(self):
+        serial = self._serial_adb_listo()
+        if not serial:
+            return
+        res = self._ejecutar_con_espera(lambda: self.adb.detectar_app_en_pantalla(serial))
+        if not res.get("ok"):
+            QMessageBox.warning(
+                self, "App en pantalla", res.get("error", "No se pudo detectar.")
+            )
+            return
+
+        pkg = res["package"]
+        es_usr = res["es_usuario"]
+        es_prot = res["es_protegido"]
+        self._log_adb(f"App activa en pantalla detectada: {pkg}")
+
+        if es_prot or not es_usr:
+            QMessageBox.information(
+                self,
+                "Aplicación en primer plano",
+                f"Paquete actual en pantalla:\n{pkg}\n\n"
+                "Corresponde a una aplicación del sistema o preinstalada.",
+            )
+            return
+
+        resp = QMessageBox.question(
+            self,
+            "Aplicación de usuario detectada en pantalla",
+            f"La ventana o anuncio actual pertenece al paquete:\n\n{pkg}\n\n"
+            "¿Deseas desinstalar esta aplicación del equipo ahora mismo?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if resp == QMessageBox.StandardButton.Yes:
+            ok, msg = self._ejecutar_con_espera(
+                lambda: self.adb.desinstalar_paquete(serial, pkg)
+            )
+            self._log_adb(msg)
+            if ok:
+                QMessageBox.information(self, "Eliminada", msg)
+                self._escanear_malware_adb()
+            else:
+                QMessageBox.warning(self, "No se pudo eliminar", msg)
+
+    def _bloquear_anuncios_seleccionados(self):
+        pkgs = self._paquetes_malware_seleccionados()
+        if not pkgs:
+            QMessageBox.information(
+                self, "Selecciona aplicaciones", "Marca al menos una aplicación en la columna «MARCAR»."
+            )
+            return
+        serial = self._serial_adb_listo()
+        if not serial:
+            return
+
+        exitos = 0
+        for pkg in pkgs:
+            ok, msg = self._ejecutar_con_espera(
+                lambda p=pkg: self.adb.revocar_superposicion(serial, p)
+            )
+            self._log_adb(msg)
+            if ok:
+                exitos += 1
+
+        self._escanear_malware_adb()
+        QMessageBox.information(
+            self,
+            "Permisos actualizados",
+            f"Se bloquearon permisos de anuncios superpuestos e instalación en {exitos} de {len(pkgs)} app(s).",
+        )
+
+    def _desactivar_malware_seleccionado(self):
+        pkgs = self._paquetes_malware_seleccionados()
+        if not pkgs:
+            QMessageBox.information(
+                self, "Selecciona aplicaciones", "Marca al menos una aplicación en la tabla."
+            )
+            return
+        serial = self._serial_adb_listo()
+        if not serial:
+            return
+        resp = QMessageBox.question(
+            self,
+            "Desactivar aplicaciones",
+            f"¿Congelar / desactivar {len(pkgs)} aplicación(es) seleccionada(s)?\n\n"
+            + "\n".join(f"• {p}" for p in pkgs[:10]),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if resp != QMessageBox.StandardButton.Yes:
+            return
+
+        exitos = 0
+        for pkg in pkgs:
+            ok, msg = self._ejecutar_con_espera(
+                lambda p=pkg: self.adb.desactivar_paquete(serial, p)
+            )
+            self._log_adb(msg)
+            if ok:
+                exitos += 1
+
+        self._escanear_malware_adb()
+        QMessageBox.information(
+            self,
+            "Resultado",
+            f"Se desactivaron {exitos} de {len(pkgs)} aplicación(es).",
+        )
+
+    def _desinstalar_malware_seleccionado(self):
+        pkgs = self._paquetes_malware_seleccionados()
+        if not pkgs:
+            QMessageBox.information(
+                self, "Selecciona aplicaciones", "Marca las aplicaciones que deseas desinstalar."
+            )
+            return
+        serial = self._serial_adb_listo()
+        if not serial:
+            return
+
+        lista_previa = "\n".join(f"• {p}" for p in pkgs[:12])
+        if len(pkgs) > 12:
+            lista_previa += f"\n... y {len(pkgs) - 12} más."
+
+        resp = QMessageBox.question(
+            self,
+            "Desinstalar aplicaciones",
+            f"¿Desinstalar permanentemente estas {len(pkgs)} aplicación(es) del teléfono?\n\n"
+            f"{lista_previa}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if resp != QMessageBox.StandardButton.Yes:
+            return
+
+        exitos = 0
+        errores: list[str] = []
+        for pkg in pkgs:
+            ok, msg = self._ejecutar_con_espera(
+                lambda p=pkg: self.adb.desinstalar_paquete(serial, p)
+            )
+            self._log_adb(msg)
+            if ok:
+                exitos += 1
+            else:
+                errores.append(msg)
+
+        self._escanear_malware_adb()
+        resumen = f"Aplicaciones desinstaladas correctamente: {exitos} de {len(pkgs)}."
+        if errores:
+            resumen += "\n\nAvisos:\n" + "\n".join(errores[:5])
+        QMessageBox.information(self, "Limpieza completada", resumen)
+
+    def _limpiar_spam_chrome_adb(self):
+        serial = self._serial_adb_listo()
+        if not serial:
+            return
+        resp = QMessageBox.question(
+            self,
+            "Limpiar notificaciones falsas de Chrome",
+            "Esta función borra los datos y permisos de sitios web en Google Chrome "
+            "(elimina falsas alertas de virus que llegan en la barra de notificaciones).\n\n"
+            "Nota: se cerrarán las pestañas abiertas de Chrome en el celular.\n¿Continuar?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if resp != QMessageBox.StandardButton.Yes:
+            return
+        ok, msg = self._ejecutar_con_espera(
+            lambda: self.adb.limpiar_spam_navegador(serial, "com.android.chrome")
+        )
+        self._log_adb(msg)
+        if ok:
+            QMessageBox.information(self, "Navegador limpio", msg)
+        else:
+            QMessageBox.warning(self, "Aviso", msg)
+
+    # --- Acciones de Anclar DNS ---
+    def _al_cambiar_preset_dns(self):
+        if not hasattr(self, "cmb_dns_preset"):
+            return
+        prov = self.cmb_dns_preset.currentData()
+        if not isinstance(prov, dict):
+            return
+        self.lbl_dns_desc.setText(prov.get("descripcion", ""))
+        host = prov.get("hostname", "")
+        if host:
+            self.txt_dns_hostname.setText(host)
+        else:
+            self.txt_dns_hostname.clear()
+            self.txt_dns_hostname.setFocus()
+
+    def _consultar_dns_actual_adb(self):
+        serial = self._serial_adb_listo()
+        if not serial:
+            return
+        info = self._ejecutar_con_espera(lambda: self.adb.obtener_estado_dns(serial))
+        desc = info.get("descripcion_corta", "No disponible")
+        self.lbl_dns_actual.setText(desc)
+        self._log_adb(f"DNS actual en equipo ({serial}): {desc}")
+
+    def _anclar_dns_adb(self):
+        servidor = self.txt_dns_hostname.text().strip()
+        if not servidor:
+            QMessageBox.warning(
+                self, "Falta servidor DNS", "Selecciona un proveedor o escribe un servidor DNS."
+            )
+            return
+        serial = self._serial_adb_listo()
+        if not serial:
+            return
+
+        ok, msg = self._ejecutar_con_espera(lambda: self.adb.anclar_dns(serial, servidor))
+        self._log_adb(msg.replace("\n", " "))
+        if ok:
+            self._consultar_dns_actual_adb()
+            QMessageBox.information(self, "DNS anclado", msg)
+        else:
+            QMessageBox.warning(self, "No se pudo anclar el DNS", msg)
+
+    def _restaurar_dns_adb(self):
+        serial = self._serial_adb_listo()
+        if not serial:
+            return
+        ok, msg = self._ejecutar_con_espera(
+            lambda: self.adb.restaurar_dns_automatico(serial)
+        )
+        self._log_adb(msg)
+        if ok:
+            self._consultar_dns_actual_adb()
+            QMessageBox.information(self, "DNS restaurado", msg)
+        else:
+            QMessageBox.warning(self, "Aviso", msg)
+
+    def _desactivar_dns_adb(self):
+        serial = self._serial_adb_listo()
+        if not serial:
+            return
+        ok, msg = self._ejecutar_con_espera(lambda: self.adb.desactivar_dns_privado(serial))
+        self._log_adb(msg)
+        if ok:
+            self._consultar_dns_actual_adb()
+            QMessageBox.information(self, "DNS desactivado", msg)
+        else:
+            QMessageBox.warning(self, "Aviso", msg)
+
+    def _probar_dns_adb(self):
+        serial = self._serial_adb_listo()
+        if not serial:
+            return
+        ok, msg = self._ejecutar_con_espera(
+            lambda: self.adb.probar_conectividad_dns(serial)
+        )
+        self._log_adb(msg.splitlines()[0] if msg else "")
+        if ok:
+            QMessageBox.information(self, "Prueba exitosa", msg)
+        else:
+            QMessageBox.warning(self, "Sin respuesta de red", msg)
 
     # ------------------------------------------
     # 6. CONFIGURACIÓN DE TALLER
@@ -2234,6 +3772,8 @@ class MainWindow(QMainWindow):
             return
         self.config.definir_codigo_maestro(nuevo)
         self.config.save()
+        self.inventario_desbloqueado = False
+        self._actualizar_ui_candado_inventario()
         QMessageBox.information(self, "Código maestro", "El código maestro quedó guardado.")
 
     def _abrir_modo_maestro(self):
@@ -2327,7 +3867,7 @@ class MainWindow(QMainWindow):
             return
         if not self._confirmar_borrado(
             "Restablecer base de datos",
-            "Se borrarán TODAS las órdenes, el catálogo de servicios con tus precios "
+            "Se borrarán TODAS las órdenes, el inventario, el catálogo de servicios con tus precios "
             "y las ubicaciones. Quedarán solo los datos de ejemplo iniciales.\n\n"
             "Se hará un respaldo antes.\n\n¿Seguro que quieres continuar?",
         ):
@@ -2536,6 +4076,7 @@ class MainWindow(QMainWindow):
     def refrescar_todo(self):
         self._cargar_combos_orden()
         self.refrescar_ordenes()
+        self.refrescar_inventario()
         self.refrescar_catalogo_ubicaciones()
         self.refrescar_reportes()
-        self.refrescar_wa()
+        self._actualizar_estado_binario_adb()

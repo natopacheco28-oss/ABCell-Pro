@@ -441,6 +441,181 @@ class WorkshopService:
         self.db.ejecutar("DELETE FROM ubicaciones WHERE id = ?", (ubicacion_id,))
         return True
 
+    # ------------------------------------------
+    # INVENTARIO DE PRODUCTOS Y REFACCIONES
+    # ------------------------------------------
+    def listar_inventario(
+        self,
+        busqueda: str = "",
+        categoria: str = "Todas",
+        filtro_stock: str = "Todos",
+    ) -> list[dict]:
+        sql = "SELECT * FROM inventario WHERE 1=1"
+        params: list = []
+
+        if categoria and categoria != "Todas":
+            sql += " AND categoria = ?"
+            params.append(categoria)
+
+        if filtro_stock == "Disponible":
+            sql += " AND COALESCE(stock, 0) > 0"
+        elif filtro_stock == "Stock bajo":
+            sql += " AND COALESCE(stock, 0) > 0 AND COALESCE(stock, 0) <= COALESCE(stock_minimo, 2)"
+        elif filtro_stock == "Agotado":
+            sql += " AND COALESCE(stock, 0) <= 0"
+
+        if busqueda and busqueda.strip():
+            termino = f"%{busqueda.strip()}%"
+            sql += """
+                AND (
+                    codigo LIKE ?
+                    OR nombre LIKE ?
+                    OR categoria LIKE ?
+                    OR marca_modelo LIKE ?
+                    OR ubicacion LIKE ?
+                    OR notas LIKE ?
+                )
+            """
+            params.extend([termino] * 6)
+
+        sql += " ORDER BY nombre COLLATE NOCASE ASC, id DESC"
+        return self.db.consultar_todos(sql, tuple(params))
+
+    def obtener_producto_inventario(self, producto_id: int) -> dict | None:
+        return self.db.consultar_uno(
+            "SELECT * FROM inventario WHERE id = ?", (int(producto_id),)
+        )
+
+    def guardar_producto_inventario(self, datos: dict) -> int:
+        nombre = str(datos.get("nombre") or "").strip()
+        if not nombre:
+            raise ValueError("El nombre del producto es obligatorio.")
+        ahora = self._ahora_str()
+        stock = max(0, int(datos.get("stock") or 0))
+        stock_min = max(0, int(datos.get("stock_minimo") if datos.get("stock_minimo") is not None else 2))
+        costo = max(0.0, float(datos.get("costo_compra") or 0.0))
+        precio = max(0.0, float(datos.get("precio_venta") or 0.0))
+
+        cur = self.db.ejecutar(
+            """
+            INSERT INTO inventario (
+                codigo, nombre, categoria, marca_modelo, stock, stock_minimo,
+                costo_compra, precio_venta, ubicacion, notas, fecha_actualizacion
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(datos.get("codigo") or "").strip(),
+                nombre,
+                str(datos.get("categoria") or "Refacciones").strip(),
+                str(datos.get("marca_modelo") or "").strip(),
+                stock,
+                stock_min,
+                costo,
+                precio,
+                str(datos.get("ubicacion") or "").strip(),
+                str(datos.get("notas") or "").strip(),
+                ahora,
+            ),
+        )
+        return int(cur.lastrowid)
+
+    def actualizar_producto_inventario(self, producto_id: int, datos: dict) -> bool:
+        producto_id = int(producto_id)
+        actual = self.obtener_producto_inventario(producto_id)
+        if not actual:
+            return False
+        nombre = str(datos.get("nombre", actual.get("nombre", "")) or "").strip()
+        if not nombre:
+            return False
+        stock = max(0, int(datos.get("stock", actual.get("stock") or 0)))
+        stock_min = max(0, int(datos.get("stock_minimo", actual.get("stock_minimo") or 0)))
+        costo = max(0.0, float(datos.get("costo_compra", actual.get("costo_compra") or 0.0)))
+        precio = max(0.0, float(datos.get("precio_venta", actual.get("precio_venta") or 0.0)))
+
+        self.db.ejecutar(
+            """
+            UPDATE inventario
+            SET codigo = ?, nombre = ?, categoria = ?, marca_modelo = ?,
+                stock = ?, stock_minimo = ?, costo_compra = ?, precio_venta = ?,
+                ubicacion = ?, notas = ?, fecha_actualizacion = ?
+            WHERE id = ?
+            """,
+            (
+                str(datos.get("codigo", actual.get("codigo", "")) or "").strip(),
+                nombre,
+                str(datos.get("categoria", actual.get("categoria", "Refacciones")) or "Refacciones").strip(),
+                str(datos.get("marca_modelo", actual.get("marca_modelo", "")) or "").strip(),
+                stock,
+                stock_min,
+                costo,
+                precio,
+                str(datos.get("ubicacion", actual.get("ubicacion", "")) or "").strip(),
+                str(datos.get("notas", actual.get("notas", "")) or "").strip(),
+                self._ahora_str(),
+                producto_id,
+            ),
+        )
+        return True
+
+    def ajustar_stock_inventario(self, producto_id: int, delta: int) -> dict | None:
+        producto_id = int(producto_id)
+        actual = self.obtener_producto_inventario(producto_id)
+        if not actual:
+            return None
+        nuevo_stock = max(0, int(actual.get("stock") or 0) + int(delta))
+        self.db.ejecutar(
+            """
+            UPDATE inventario
+            SET stock = ?, fecha_actualizacion = ?
+            WHERE id = ?
+            """,
+            (nuevo_stock, self._ahora_str(), producto_id),
+        )
+        return self.obtener_producto_inventario(producto_id)
+
+    def eliminar_producto_inventario(self, producto_id: int) -> bool:
+        producto_id = int(producto_id)
+        actual = self.obtener_producto_inventario(producto_id)
+        if not actual:
+            return False
+        self.db.ejecutar("DELETE FROM inventario WHERE id = ?", (producto_id,))
+        return True
+
+    def obtener_resumen_inventario(self) -> dict:
+        items = self.listar_inventario()
+        total_productos = len(items)
+        total_unidades = 0
+        stock_bajo = 0
+        agotados = 0
+        valor_costo = 0.0
+        valor_venta = 0.0
+
+        for it in items:
+            st = max(0, int(it.get("stock") or 0))
+            st_min = max(0, int(it.get("stock_minimo") if it.get("stock_minimo") is not None else 2))
+            costo = max(0.0, float(it.get("costo_compra") or 0.0))
+            precio = max(0.0, float(it.get("precio_venta") or 0.0))
+
+            total_unidades += st
+            if st <= 0:
+                agotados += 1
+            elif st <= st_min:
+                stock_bajo += 1
+
+            valor_costo += st * costo
+            valor_venta += st * precio
+
+        return {
+            "total_productos": total_productos,
+            "total_unidades": total_unidades,
+            "stock_bajo": stock_bajo,
+            "agotados": agotados,
+            "valor_costo": valor_costo,
+            "valor_venta": valor_venta,
+            "ganancia_potencial": valor_venta - valor_costo,
+        }
+
     def generar_reporte_financiero(self) -> dict:
         hoy_str = datetime.now().strftime("%Y-%m-%d")
         mes_str = datetime.now().strftime("%Y-%m")
