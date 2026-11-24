@@ -42,6 +42,7 @@ jobs:
             --hidden-import database.db_manager `
             --hidden-import services.workshop_service `
             --hidden-import integrations.printer_58mm `
+            --hidden-import integrations.ticket_image `
             --hidden-import integrations.whatsapp_center `
             --hidden-import ui.theme `
             --hidden-import ui.main_window `

@@ -1,9 +1,10 @@
 import os
 import webbrowser
 from datetime import datetime
-from PySide6.QtCore import QPointF, Qt, Signal
+from PySide6.QtCore import QPointF, Qt, Signal, QUrl
 from PySide6.QtGui import (
     QColor,
+    QDesktopServices,
     QIcon,
     QKeySequence,
     QPainter,
@@ -44,6 +45,13 @@ from integrations.printer_58mm import (
     logo_color_pil,
     logo_pil,
 )
+
+try:
+    from integrations.ticket_image import generar_imagen_ticket
+except Exception:
+
+    def generar_imagen_ticket(orden, config, ruta_destino):  # type: ignore
+        return None
 from ui.theme import DARK_QSS, LIGHT_QSS
 
 ESTILO_BOTON_PELIGRO = (
@@ -820,6 +828,11 @@ class MainWindow(QMainWindow):
         btn_ticket.clicked.connect(self._imprimir_orden_sel)
         f2.addWidget(btn_ticket)
 
+        btn_img = QPushButton("Imagen ticket")
+        btn_img.setMinimumWidth(125)
+        btn_img.clicked.connect(self._generar_imagen_ticket_sel)
+        f2.addWidget(btn_img)
+
         btn_wa = QPushButton("WhatsApp")
         btn_wa.setMinimumWidth(120)
         btn_wa.clicked.connect(self._enviar_wa_orden_sel)
@@ -1270,6 +1283,108 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(
                 self, "Imprimir ticket", f"{msg}\n\nVista previa:\n{generar_texto_ticket(o, self.config)}"
             )
+
+    def _generar_imagen_ticket_sel(self):
+        folio = self._folio_seleccionado()
+        if not folio:
+            QMessageBox.information(self, "Selecciona orden", "Selecciona una orden de la tabla.")
+            return
+        o = self.service.obtener_orden(folio)
+        if not o:
+            return
+        carpeta = os.path.join(
+            os.path.dirname(os.path.abspath(self.db.db_path)), "tickets"
+        )
+        os.makedirs(carpeta, exist_ok=True)
+        ruta = os.path.join(carpeta, f"ticket_{folio:04d}.png")
+        try:
+            ruta_ok = generar_imagen_ticket(o, self.config, ruta)
+        except Exception as exc:
+            QMessageBox.warning(
+                self, "No se pudo generar", f"No se pudo crear la imagen del ticket:\n{exc}"
+            )
+            return
+        if not ruta_ok:
+            QMessageBox.warning(
+                self,
+                "No disponible",
+                "No se pudo generar la imagen (falta el componente de imágenes).",
+            )
+            return
+        self._mostrar_dialogo_imagen_ticket(o, ruta_ok)
+
+    def _mostrar_dialogo_imagen_ticket(self, orden: dict, ruta: str):
+        folio = int(orden.get("folio") or 0)
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"Ticket en imagen — Folio #{folio:04d}")
+        dlg.setMinimumWidth(520)
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(18, 14, 18, 14)
+        lay.setSpacing(10)
+
+        ayuda = QLabel(
+            "Esta imagen está lista para enviar por WhatsApp. "
+            "Ábrela y adjúntala en el chat, o usa el botón de WhatsApp."
+        )
+        ayuda.setObjectName("CardSub")
+        ayuda.setWordWrap(True)
+        lay.addWidget(ayuda)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setMinimumHeight(420)
+        lbl_img = QLabel()
+        lbl_img.setAlignment(Qt.AlignCenter)
+        pm = QPixmap(ruta)
+        if not pm.isNull():
+            lbl_img.setPixmap(
+                pm.scaled(460, 460, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            )
+        else:
+            lbl_img.setText("No se pudo cargar la vista previa.")
+        scroll.setWidget(lbl_img)
+        lay.addWidget(scroll, 1)
+
+        lbl_ruta = QLabel(ruta)
+        lbl_ruta.setObjectName("CardSub")
+        lbl_ruta.setWordWrap(True)
+        lay.addWidget(lbl_ruta)
+
+        fila = QHBoxLayout()
+        fila.setSpacing(8)
+        btn_abrir = QPushButton("Abrir imagen")
+        btn_abrir.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(ruta))
+        )
+        btn_carpeta = QPushButton("Abrir carpeta")
+        btn_carpeta.clicked.connect(
+            lambda: QDesktopServices.openUrl(
+                QUrl.fromLocalFile(os.path.dirname(ruta))
+            )
+        )
+        btn_wa = QPushButton("Enviar por WhatsApp")
+        btn_wa.setObjectName("PrimaryBtn")
+        btn_wa.setMinimumWidth(160)
+        btn_wa.clicked.connect(lambda: self._enviar_wa_desde_imagen(orden))
+        btn_cerrar = QPushButton("Cerrar")
+        btn_cerrar.clicked.connect(dlg.accept)
+        for b in (btn_abrir, btn_carpeta, btn_wa, btn_cerrar):
+            fila.addWidget(b)
+        lay.addLayout(fila)
+        dlg.exec()
+
+    def _enviar_wa_desde_imagen(self, orden: dict):
+        tipo = "listo" if orden.get("estatus") == "Listo para entregar" else "recibido"
+        msg = self.wa.construir_mensaje(tipo, orden)
+        url = self.wa.generar_url_wa(orden.get("cliente_tel", ""), msg)
+        self.wa.registrar_notificacion(
+            int(orden.get("folio") or 0),
+            orden.get("cliente_nombre", ""),
+            orden.get("cliente_tel", ""),
+            tipo,
+            msg,
+        )
+        webbrowser.open(url)
 
     def _autorizar_con_codigo(self, accion: str, obligatorio: bool = False) -> bool:
         if not self.config.tiene_codigo_maestro():
