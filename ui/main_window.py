@@ -1,7 +1,7 @@
 import os
 import webbrowser
 from datetime import datetime
-from PySide6.QtCore import QPointF, Qt, Signal, QUrl
+from PySide6.QtCore import QPoint, QPointF, QSize, Qt, Signal, QUrl
 from PySide6.QtGui import (
     QColor,
     QDesktopServices,
@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
@@ -56,13 +57,30 @@ except Exception:
 
     def generar_imagen_ticket(orden, config, ruta_destino):  # type: ignore
         return None
-from ui.theme import DARK_QSS, LIGHT_QSS
+from ui.theme import (
+    construir_qss,
+    es_tema_oscuro,
+    TEMAS_ORDEN,
+    TEMA_POR_DEFECTO,
+)
 
 ESTILO_BOTON_PELIGRO = (
     "QPushButton{background:#dc2626;color:white;font-weight:600;"
     "border-radius:8px;padding:8px 14px;border:none;}"
     "QPushButton:hover{background:#b91c1c;}"
 )
+
+
+def _cos(grados: float) -> float:
+    import math
+
+    return math.cos(math.radians(grados))
+
+
+def _sin(grados: float) -> float:
+    import math
+
+    return math.sin(math.radians(grados))
 
 CATEGORIAS_INVENTARIO = [
     "Refacciones",
@@ -561,17 +579,52 @@ class MainWindow(QMainWindow):
         if pm is not None and not pm.isNull():
             self.setWindowIcon(QIcon(pm))
 
+    # --- Icono de engranaje (dibujado, sin depender de archivos externos) ---
+    def _icono_gearra(self, tamano: int = 22) -> QPixmap:
+        pm = QPixmap(tamano, tamano)
+        pm.fill(Qt.transparent)
+        painter = QPainter(pm)
+        painter.setRenderHint(QPainter.Antialiasing)
+        es_oscuro = es_tema_oscuro(str(self.config.get("apariencia", "tema", TEMA_POR_DEFECTO)))
+        color = QColor("#e2e8f0") if es_oscuro else QColor("#334155")
+        painter.setPen(QPen(color, 2))
+        painter.setBrush(Qt.NoBrush)
+        cx = cy = tamano / 2.0
+        radio = tamano * 0.30
+        # corona exterior
+        painter.drawEllipse(QPointF(cx, cy), radio, radio)
+        # 8 dientes
+        for i in range(8):
+            ang = i * 45.0
+            x = cx + (radio - 3) * _cos(ang)
+            y = cy + (radio - 3) * _sin(ang)
+            painter.save()
+            painter.translate(x, y)
+            painter.rotate(ang)
+            painter.drawRoundedRect(-tamano * 0.06, -tamano * 0.09, tamano * 0.12, tamano * 0.18, 2, 2)
+            painter.restore()
+        # agujero central
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(0, 0, 0, 0))
+        painter.setCompositionMode(QPainter.CompositionMode_Clear)
+        painter.drawEllipse(QPointF(cx, cy), radio * 0.42, radio * 0.42)
+        painter.end()
+        return pm
+
+    def _tema_actual(self) -> str:
+        tema = str(self.config.get("apariencia", "tema", TEMA_POR_DEFECTO)).strip()
+        return tema if tema in TEMAS_ORDEN else TEMA_POR_DEFECTO
+
     def _es_tema_claro(self) -> bool:
-        tema = str(self.config.get("apariencia", "tema", "Claro")).strip().lower()
-        return not tema.startswith("oscuro") and not tema.startswith("negro")
+        return not es_tema_oscuro(self._tema_actual())
 
     def aplicar_tema(self):
-        es_claro = self._es_tema_claro()
-        self.setStyleSheet(LIGHT_QSS if es_claro else DARK_QSS)
-        if hasattr(self, "cfg_tema"):
-            self.cfg_tema.blockSignals(True)
-            self.cfg_tema.setCurrentText("Claro" if es_claro else "Oscuro")
-            self.cfg_tema.blockSignals(False)
+        tema = self._tema_actual()
+        self.setStyleSheet(construir_qss(tema))
+        if hasattr(self, "lbl_tema_actual"):
+            self.lbl_tema_actual.setText(f"Tema: {tema}")
+        if hasattr(self, "btn_gearra_tema"):
+            self.btn_gearra_tema.setIcon(QIcon(self._icono_gearra(22)))
 
     def _build_ui(self):
         central = QWidget()
@@ -2616,25 +2669,53 @@ class MainWindow(QMainWindow):
     def _build_subtab_diagnostico_adb(self) -> QWidget:
         p = QWidget()
         lay = QVBoxLayout(p)
-        lay.setContentsMargins(14, 12, 14, 12)
-        lay.setSpacing(10)
+        lay.setContentsMargins(18, 16, 18, 16)
+        lay.setSpacing(14)
 
-        acciones = QHBoxLayout()
-        acciones.setSpacing(8)
+        # --- Bloque: acciones de diagnóstico ---
+        diag_card = QFrame()
+        diag_card.setObjectName("Card")
+        d_lay = QVBoxLayout(diag_card)
+        d_lay.setContentsMargins(18, 16, 18, 16)
+        d_lay.setSpacing(12)
+        lbl_diag_t = QLabel("Diagnóstico")
+        lbl_diag_t.setObjectName("CardTitle")
+        d_lay.addWidget(lbl_diag_t)
 
+        row1 = QHBoxLayout()
+        row1.setSpacing(10)
         btn_diag = QPushButton("Ejecutar diagnóstico completo")
         btn_diag.setObjectName("PrimaryBtn")
-        btn_diag.setMinimumWidth(215)
+        btn_diag.setMinimumWidth(230)
         btn_diag.clicked.connect(self._ejecutar_diagnostico_adb)
-
-        btn_cap = QPushButton("Captura de pantalla")
-        btn_cap.clicked.connect(self._capturar_pantalla_adb)
-
         btn_copiar = QPushButton("Copiar reporte")
         btn_copiar.clicked.connect(self._copiar_reporte_adb)
+        row1.addWidget(btn_diag)
+        row1.addWidget(btn_copiar)
+        row1.addStretch()
+        d_lay.addLayout(row1)
 
+        row2 = QHBoxLayout()
+        row2.setSpacing(10)
+        btn_cap = QPushButton("Captura de pantalla")
+        btn_cap.clicked.connect(self._capturar_pantalla_adb)
         btn_orden = QPushButton("Enviar a Nueva Orden")
         btn_orden.clicked.connect(self._pasar_diag_a_nueva_orden)
+        row2.addWidget(btn_cap)
+        row2.addWidget(btn_orden)
+        row2.addStretch()
+        d_lay.addLayout(row2)
+        lay.addWidget(diag_card)
+
+        # --- Bloque: reinicio del equipo ---
+        reboot_card = QFrame()
+        reboot_card.setObjectName("Card")
+        r_lay = QVBoxLayout(reboot_card)
+        r_lay.setContentsMargins(18, 16, 18, 16)
+        r_lay.setSpacing(12)
+        lbl_reb_t = QLabel("Reinicio del equipo")
+        lbl_reb_t.setObjectName("CardTitle")
+        r_lay.addWidget(lbl_reb_t)
 
         self.cmb_adb_reboot = QComboBox()
         self.cmb_adb_reboot.addItems(
@@ -2642,15 +2723,14 @@ class MainWindow(QMainWindow):
         )
         btn_reboot = QPushButton("Reiniciar equipo")
         btn_reboot.clicked.connect(self._reiniciar_equipo_adb)
-
-        acciones.addWidget(btn_diag)
-        acciones.addWidget(btn_cap)
-        acciones.addWidget(btn_copiar)
-        acciones.addWidget(btn_orden)
-        acciones.addStretch()
-        acciones.addWidget(self.cmb_adb_reboot)
-        acciones.addWidget(btn_reboot)
-        lay.addLayout(acciones)
+        r_row = QHBoxLayout()
+        r_row.setSpacing(10)
+        r_row.addWidget(QLabel("Modo:"))
+        r_row.addWidget(self.cmb_adb_reboot)
+        r_row.addStretch()
+        r_row.addWidget(btn_reboot)
+        r_lay.addLayout(r_row)
+        lay.addWidget(reboot_card)
 
         cards = QHBoxLayout()
         cards.setSpacing(10)
@@ -2753,29 +2833,39 @@ class MainWindow(QMainWindow):
         self.tbl_adb_malware.setColumnWidth(3, 100)
         lay.addWidget(self.tbl_adb_malware, 1)
 
-        bot_bar = QHBoxLayout()
-        bot_bar.setSpacing(8)
+        bot_card = QFrame()
+        bot_card.setObjectName("Card")
+        b_lay = QVBoxLayout(bot_card)
+        b_lay.setContentsMargins(18, 16, 18, 16)
+        b_lay.setSpacing(12)
+        lbl_bot_t = QLabel("Acciones sobre las aplicaciones marcadas")
+        lbl_bot_t.setObjectName("CardTitle")
+        b_lay.addWidget(lbl_bot_t)
 
-        btn_chrome = QPushButton("Limpiar notificaciones spam de Chrome")
-        btn_chrome.clicked.connect(self._limpiar_spam_chrome_adb)
-
+        b_row1 = QHBoxLayout()
+        b_row1.setSpacing(10)
         btn_quitar_ov = QPushButton("Bloquear anuncios flotantes")
         btn_quitar_ov.clicked.connect(self._bloquear_anuncios_seleccionados)
+        btn_chrome = QPushButton("Limpiar notificaciones spam de Chrome")
+        btn_chrome.clicked.connect(self._limpiar_spam_chrome_adb)
+        b_row1.addWidget(btn_quitar_ov)
+        b_row1.addWidget(btn_chrome)
+        b_row1.addStretch()
+        b_lay.addLayout(b_row1)
 
+        b_row2 = QHBoxLayout()
+        b_row2.setSpacing(10)
         btn_desactivar = QPushButton("Desactivar marcadas")
         btn_desactivar.clicked.connect(self._desactivar_malware_seleccionado)
-
         btn_desinstalar = QPushButton("Desinstalar marcadas")
         btn_desinstalar.setStyleSheet(ESTILO_BOTON_PELIGRO)
         btn_desinstalar.setMinimumWidth(165)
         btn_desinstalar.clicked.connect(self._desinstalar_malware_seleccionado)
-
-        bot_bar.addWidget(btn_chrome)
-        bot_bar.addStretch()
-        bot_bar.addWidget(btn_quitar_ov)
-        bot_bar.addWidget(btn_desactivar)
-        bot_bar.addWidget(btn_desinstalar)
-        lay.addLayout(bot_bar)
+        b_row2.addWidget(btn_desactivar)
+        b_row2.addStretch()
+        b_row2.addWidget(btn_desinstalar)
+        b_lay.addLayout(b_row2)
+        lay.addWidget(bot_card)
         return p
 
     def _build_subtab_dns_adb(self) -> QWidget:
@@ -3549,10 +3639,23 @@ class MainWindow(QMainWindow):
         imp_lay.addWidget(self.lbl_imp_auto)
         imp_lay.addWidget(btn_probar_imp, alignment=Qt.AlignLeft)
 
-        self.cfg_tema = QComboBox()
-        self.cfg_tema.addItems(["Claro", "Oscuro"])
-        self.cfg_tema.setCurrentText("Claro" if self._es_tema_claro() else "Oscuro")
-        self.cfg_tema.currentTextChanged.connect(self._cambiar_tema_desde_combo)
+        # --- Botón de engranaje para elegir el tema (selector emergente) ---
+        self.btn_gearra_tema = QPushButton()
+        self.btn_gearra_tema.setObjectName("GearBtn")
+        self.btn_gearra_tema.setToolTip("Cambiar tema visual")
+        self.btn_gearra_tema.setIconSize(QSize(22, 22))
+        self.btn_gearra_tema.setMinimumWidth(40)
+        self.btn_gearra_tema.setMinimumHeight(40)
+        self.btn_gearra_tema.clicked.connect(self._abrir_selector_tema)
+
+        self.lbl_tema_actual = QLabel("Tema: " + self._tema_actual())
+        self.lbl_tema_actual.setObjectName("CardSub")
+
+        row_tema = QHBoxLayout()
+        row_tema.setSpacing(10)
+        row_tema.addWidget(self.btn_gearra_tema)
+        row_tema.addWidget(self.lbl_tema_actual)
+        row_tema.addStretch()
 
         row_logo = QHBoxLayout()
         self.cfg_logo = QLineEdit(self.config.get("identidad", "logo_personalizado", ""))
@@ -3565,7 +3668,7 @@ class MainWindow(QMainWindow):
         form.addRow("Teléfono / WhatsApp:", self.cfg_tel)
         form.addRow("Dirección:", self.cfg_dir)
         form.addRow("Impresión de tickets:", imp_card)
-        form.addRow("Tema visual (Claro / Oscuro):", self.cfg_tema)
+        form.addRow("Tema visual:", row_tema)
         form.addRow("Logo personalizado:", row_logo)
 
         self.cfg_garantia = QPlainTextEdit()
@@ -3767,7 +3870,21 @@ class MainWindow(QMainWindow):
                 return
         self.cfg_garantia.setPlainText(GARANTIA_EJEMPLO)
 
-    def _cambiar_tema_desde_combo(self, nuevo_tema: str):
+    def _abrir_selector_tema(self):
+        menu = QMenu(self)
+        menu.setTitle("Cambiar tema")
+        actual = self._tema_actual()
+        for nombre in TEMAS_ORDEN:
+            accion = menu.addAction(nombre)
+            accion.setCheckable(True)
+            accion.setChecked(nombre == actual)
+            accion.triggered.connect(lambda checked=False, n=nombre: self._cambiar_tema(n))
+        puntos = self.btn_gearra_tema.mapToGlobal(QPoint(0, 0))
+        menu.exec(puntos)
+
+    def _cambiar_tema(self, nuevo_tema: str):
+        if nuevo_tema not in TEMAS_ORDEN or nuevo_tema == self._tema_actual():
+            return
         self.config.set("apariencia", "tema", nuevo_tema)
         self.config.save()
         self.aplicar_tema()
@@ -3801,7 +3918,6 @@ class MainWindow(QMainWindow):
         self.config.set("notas", "telefono", self.cfg_tel.text().strip())
         self.config.set("contacto", "direccion", self.cfg_dir.text().strip())
         self.config.set("notas", "direccion", self.cfg_dir.text().strip())
-        self.config.set("apariencia", "tema", self.cfg_tema.currentText())
         self.config.set("identidad", "logo_personalizado", self.cfg_logo.text().strip())
         self.config.set(
             "notas", "politicas_garantia", self.cfg_garantia.toPlainText().strip()

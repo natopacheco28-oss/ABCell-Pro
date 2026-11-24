@@ -54,7 +54,7 @@ DEFAULT_CONFIG = {
         ),
     },
     "apariencia": {
-        "tema": "Oscuro",
+        "tema": "Claro",
     },
     "seguridad": {
         "salt": "",
