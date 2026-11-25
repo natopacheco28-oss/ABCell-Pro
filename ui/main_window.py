@@ -753,7 +753,9 @@ class MainWindow(QMainWindow):
         sb_lay.setContentsMargins(12, 16, 12, 12)
         sb_lay.setSpacing(6)
 
-        brand_row = FlowLayout()
+        # Una fila simple: FlowLayout tiene un ancho ideal de 320 px para
+        # formularios, que aquí ensanchaba innecesariamente toda la barra.
+        brand_row = QHBoxLayout()
         brand_row.setSpacing(8)
         self.lbl_logo_sidebar = QLabel()
         self.lbl_logo_sidebar.setFixedSize(44, 44)
