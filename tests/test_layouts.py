@@ -118,7 +118,12 @@ class LayoutTests(unittest.TestCase):
                 table = window.tbl_servicios
                 table.fit_contents()
                 self.settle()
-                self.assertLessEqual(window.sidebar.width(), 280)
+                self.assertLessEqual(window.sidebar.width(), 280, {
+                    "sidebar_hint": window.sidebar.sizeHint().toTuple(),
+                    "navigation": [(b.text(), b.minimumSize().toTuple(), b.sizeHint().toTuple(),
+                                    b.font().toString()) for b in window.nav_buttons],
+                    "brand": window.lbl_brand_sidebar.sizeHint().toTuple(),
+                })
                 self.assertEqual(table.horizontalScrollBar().maximum(), 0)
                 action_cell = table.cellWidget(0, 5)
                 self.assertLessEqual(action_cell.geometry().right(), table.viewport().width())
