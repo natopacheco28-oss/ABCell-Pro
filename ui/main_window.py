@@ -57,30 +57,16 @@ except Exception:
 
     def generar_imagen_ticket(orden, config, ruta_destino):  # type: ignore
         return None
+from ui.icons import icono
 from ui.theme import (
+    PALETAS_TEMAS,
+    GestorTemas,
     construir_qss,
     es_tema_oscuro,
+    nombre_tema,
     TEMAS_ORDEN,
     TEMA_POR_DEFECTO,
 )
-
-ESTILO_BOTON_PELIGRO = (
-    "QPushButton{background:#dc2626;color:white;font-weight:600;"
-    "border-radius:8px;padding:8px 14px;border:none;}"
-    "QPushButton:hover{background:#b91c1c;}"
-)
-
-
-def _cos(grados: float) -> float:
-    import math
-
-    return math.cos(math.radians(grados))
-
-
-def _sin(grados: float) -> float:
-    import math
-
-    return math.sin(math.radians(grados))
 
 CATEGORIAS_INVENTARIO = [
     "Refacciones",
@@ -521,6 +507,45 @@ def _configurar_tabla(tabla: QTableWidget, stretch_col: int = -1):
         header.setSectionResizeMode(stretch_col, QHeaderView.Stretch)
 
 
+def _tarjeta(titulo: str = "", subtitulo: str = "", margenes=(18, 16, 18, 16)) -> tuple:
+    """Crea una tarjeta con borde finito, esquinas redondeadas y un título.
+
+    Devuelve ``(frame, layout)`` para agregar contenido con relleno amplio.
+    """
+    card = QFrame()
+    card.setObjectName("Card")
+    lay = QVBoxLayout(card)
+    margen_l, margen_t, margen_r, margen_b = margenes
+    lay.setContentsMargins(margen_l, margen_t, margen_r, margen_b)
+    lay.setSpacing(12)
+    if titulo:
+        lay.addWidget(_etiqueta(titulo, "CardTitle"))
+    if subtitulo:
+        lay.addWidget(_etiqueta(subtitulo, "CardSub"))
+    return card, lay
+
+
+def _etiqueta(texto: str, object_name: str) -> QLabel:
+    etiqueta = QLabel(texto)
+    etiqueta.setObjectName(object_name)
+    return etiqueta
+
+
+def _fila(espacio: int = 10) -> QHBoxLayout:
+    """Fila horizontal con separación uniforme entre controles."""
+    fila = QHBoxLayout()
+    fila.setSpacing(espacio)
+    fila.setContentsMargins(0, 0, 0, 0)
+    return fila
+
+
+def _columna(espacio: int = 12) -> QVBoxLayout:
+    columna = QVBoxLayout()
+    columna.setSpacing(espacio)
+    columna.setContentsMargins(0, 0, 0, 0)
+    return columna
+
+
 class MainWindow(QMainWindow):
     def __init__(self, db: DatabaseManager, config: ConfigManager):
         super().__init__()
@@ -579,52 +604,107 @@ class MainWindow(QMainWindow):
         if pm is not None and not pm.isNull():
             self.setWindowIcon(QIcon(pm))
 
-    # --- Icono de engranaje (dibujado, sin depender de archivos externos) ---
-    def _icono_gearra(self, tamano: int = 22) -> QPixmap:
-        pm = QPixmap(tamano, tamano)
-        pm.fill(Qt.transparent)
-        painter = QPainter(pm)
-        painter.setRenderHint(QPainter.Antialiasing)
-        es_oscuro = es_tema_oscuro(str(self.config.get("apariencia", "tema", TEMA_POR_DEFECTO)))
-        color = QColor("#e2e8f0") if es_oscuro else QColor("#334155")
-        painter.setPen(QPen(color, 2))
-        painter.setBrush(Qt.NoBrush)
-        cx = cy = tamano / 2.0
-        radio = tamano * 0.30
-        # corona exterior
-        painter.drawEllipse(QPointF(cx, cy), radio, radio)
-        # 8 dientes
-        for i in range(8):
-            ang = i * 45.0
-            x = cx + (radio - 3) * _cos(ang)
-            y = cy + (radio - 3) * _sin(ang)
-            painter.save()
-            painter.translate(x, y)
-            painter.rotate(ang)
-            painter.drawRoundedRect(-tamano * 0.06, -tamano * 0.09, tamano * 0.12, tamano * 0.18, 2, 2)
-            painter.restore()
-        # agujero central
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor(0, 0, 0, 0))
-        painter.setCompositionMode(QPainter.CompositionMode_Clear)
-        painter.drawEllipse(QPointF(cx, cy), radio * 0.42, radio * 0.42)
-        painter.end()
-        return pm
+    # --- Gestor de temas (centralizado en ui.theme) ---
+    def _gestor_temas(self) -> GestorTemas:
+        if getattr(self, "_gestor", None) is None:
+            self._gestor = GestorTemas(self.config)
+        return self._gestor
 
     def _tema_actual(self) -> str:
-        tema = str(self.config.get("apariencia", "tema", TEMA_POR_DEFECTO)).strip()
-        return tema if tema in TEMAS_ORDEN else TEMA_POR_DEFECTO
+        return self._gestor_temas().actual()
 
     def _es_tema_claro(self) -> bool:
-        return not es_tema_oscuro(self._tema_actual())
+        return not self._gestor_temas().es_oscuro()
+
+    def _paleta_actual(self) -> dict:
+        return PALETAS_TEMAS[nombre_tema(self._tema_actual())]
+
+    def _color_icono(self, object_name: str, jerarquia: str, activo: bool = False) -> str:
+        """Color que debe usar un icono según la jerarquía del botón.
+
+        Los iconos toman el color del texto/fondo del botón para integrarse
+        con el tema activo (directriz: iconografía monocromática coherente).
+        """
+        p = self._paleta_actual()
+        if object_name == "PrimaryBtn":
+            return p["primary_fg"]
+        if object_name == "DangerBtn":
+            return p["danger_fg"]
+        if object_name == "SecondaryBtn":
+            return p["secondary_fg"]
+        if object_name == "NavBtn":
+            return p["nav_active_fg"] if activo else p["nav_fg"]
+        if object_name in ("StageTab",):
+            return p["stage_active"] if activo else p["stage_fg"]
+        if object_name in ("IconBtn", "GearBtn", "NavBtn"):
+            return p["icon"]
+        return p["btn_fg"]
+
+    def _boton(
+        self,
+        texto: str = "",
+        icono_nombre: str = "",
+        jerarquia: str = "secundario",
+        object_name: str = "",
+        tooltip: str = "",
+        icon_size: int = 18,
+    ) -> QPushButton:
+        """Crea un botón moderno con icono vectorial a la izquierda + texto.
+
+        ``jerarquia``: ``"principal"``, ``"secundario"`` o ``"critico"``.
+        El icono se colorea según la jerarquía y se re-adapta al cambiar de
+        tema (ver ``_actualizar_iconos_botones``).
+        """
+        if not object_name:
+            object_name = {
+                "principal": "PrimaryBtn",
+                "secundario": "SecondaryBtn",
+                "critico": "DangerBtn",
+            }.get(jerarquia, "SecondaryBtn")
+        boton = QPushButton(texto)
+        boton.setObjectName(object_name)
+        if tooltip:
+            boton.setToolTip(tooltip)
+        if icono_nombre:
+            color = self._color_icono(object_name, jerarquia)
+            boton.setIcon(icono(icono_nombre, color, icon_size))
+            boton.setIconSize(QSize(icon_size, icon_size))
+            boton.setProperty("_icono_nombre", icono_nombre)
+            boton.setProperty("_icono_jerarquia", jerarquia)
+        return boton
+
+    def _boton_icono(self, icono_nombre: str, object_name: str = "IconBtn", tooltip: str = "", tamano: int = 20) -> QPushButton:
+        boton = QPushButton()
+        boton.setObjectName(object_name)
+        if tooltip:
+            boton.setToolTip(tooltip)
+        color = self._color_icono(object_name, "secundario")
+        boton.setIcon(icono(icono_nombre, color, tamano))
+        boton.setIconSize(QSize(tamano, tamano))
+        boton.setProperty("_icono_nombre", icono_nombre)
+        boton.setProperty("_icono_jerarquia", "icono")
+        boton.setProperty("_icono_objeto", object_name)
+        return boton
+
+    def _actualizar_iconos_botones(self):
+        """Recolorea los iconos de todos los botones según el tema activo."""
+        for boton in self.findChildren(QPushButton):
+            nombre = boton.property("_icono_nombre")
+            if not nombre:
+                continue
+            object_name = boton.objectName()
+            activo = bool(boton.property("active") is True) or (object_name == "NavBtn" and boton.property("active") is True)
+            jerarquia = boton.property("_icono_jerarquia") or "secundario"
+            color = self._color_icono(object_name, jerarquia, activo=activo)
+            tamano = boton.iconSize().width() or 18
+            boton.setIcon(icono(nombre, color, tamano))
 
     def aplicar_tema(self):
-        tema = self._tema_actual()
-        self.setStyleSheet(construir_qss(tema))
+        g = self._gestor_temas()
+        self.setStyleSheet(g.qss())
+        self._actualizar_iconos_botones()
         if hasattr(self, "lbl_tema_actual"):
-            self.lbl_tema_actual.setText(f"Tema: {tema}")
-        if hasattr(self, "btn_gearra_tema"):
-            self.btn_gearra_tema.setIcon(QIcon(self._icono_gearra(22)))
+            self.lbl_tema_actual.setText(f"Tema: {g.actual()}")
 
     def _build_ui(self):
         central = QWidget()
@@ -668,26 +748,25 @@ class MainWindow(QMainWindow):
         sb_lay.addSpacing(16)
 
         secciones = [
-            ("Órdenes de trabajo", 0),
-            ("Nueva orden", 1),
-            ("Inventario", 2),
-            ("Catálogo y Ubicaciones", 3),
-            ("Estadísticas y Caja", 4),
-            ("Utilidades Android", 5),
-            ("Configuración de taller", 6),
+            ("Órdenes de trabajo", "orden", 0),
+            ("Nueva orden", "nueva-orden", 1),
+            ("Inventario", "inventario", 2),
+            ("Catálogo y Ubicaciones", "catalogo", 3),
+            ("Estadísticas y Caja", "estadisticas", 4),
+            ("Utilidades Android", "android", 5),
+            ("Configuración de taller", "configuracion", 6),
         ]
-        for texto, idx in secciones:
-            btn = QPushButton(texto)
-            btn.setObjectName("NavBtn")
-            btn.setMinimumHeight(44)
+        for texto, icono_nombre, idx in secciones:
+            btn = self._boton(texto, icono_nombre, jerarquia="secundario", object_name="NavBtn")
+            btn.setMinimumHeight(46)
             btn.clicked.connect(lambda checked=False, i=idx: self.ir_a_seccion(i))
             sb_lay.addWidget(btn)
             self.nav_buttons.append(btn)
 
         sb_lay.addStretch(1)
 
-        btn_sync = QPushButton("Refrescar datos")
-        btn_sync.setMinimumHeight(42)
+        btn_sync = self._boton("Refrescar datos", "refresh", jerarquia="secundario", tooltip="Recargar datos del taller")
+        btn_sync.setMinimumHeight(44)
         btn_sync.clicked.connect(self.refrescar_todo)
         sb_lay.addWidget(btn_sync)
 
@@ -724,6 +803,7 @@ class MainWindow(QMainWindow):
             btn.setProperty("active", i == indice)
             btn.style().unpolish(btn)
             btn.style().polish(btn)
+        self._actualizar_iconos_botones()
         self.refrescar_todo()
 
     def _mostrar_todas_las_ordenes(self):
@@ -871,12 +951,12 @@ class MainWindow(QMainWindow):
 
         f1.addStretch()
 
-        btn_act_orden = QPushButton("Guardar Estado / Ubicación")
+        btn_act_orden = self._boton("Guardar Estado / Ubicación", "guardar", jerarquia="secundario", tooltip="Guardar cambios de estado y ubicación")
         btn_act_orden.setMinimumWidth(190)
         btn_act_orden.clicked.connect(self._actualizar_orden_sel)
         f1.addWidget(btn_act_orden)
 
-        btn_editar_orden = QPushButton("Editar orden")
+        btn_editar_orden = self._boton("Editar orden", "editar", jerarquia="secundario", tooltip="Editar la orden seleccionada")
         btn_editar_orden.setMinimumWidth(125)
         btn_editar_orden.clicked.connect(self._editar_orden_sel)
         f1.addWidget(btn_editar_orden)
@@ -897,27 +977,25 @@ class MainWindow(QMainWindow):
         self.cmb_orden_mpago.addItems(METODOS_PAGO)
         f2.addWidget(self.cmb_orden_mpago)
 
-        btn_abonar = QPushButton("Registrar Abono")
-        btn_abonar.setObjectName("PrimaryBtn")
+        btn_abonar = self._boton("Registrar Abono", "zap", jerarquia="principal", tooltip="Registrar un abono en la orden")
         btn_abonar.setMinimumWidth(145)
         btn_abonar.clicked.connect(self._abonar_orden_sel)
         f2.addWidget(btn_abonar)
 
         f2.addStretch()
 
-        btn_ticket = QPushButton("Imprimir ticket")
+        btn_ticket = self._boton("Imprimir ticket", "imprimir", jerarquia="secundario", tooltip="Imprimir el ticket en la impresora")
         btn_ticket.setMinimumWidth(125)
         btn_ticket.clicked.connect(self._imprimir_orden_sel)
         f2.addWidget(btn_ticket)
 
-        btn_img = QPushButton("Ticket digital")
+        btn_img = self._boton("Ticket digital", "descargar", jerarquia="secundario", tooltip="Generar el ticket como imagen y copiarlo")
         btn_img.setMinimumWidth(125)
         btn_img.clicked.connect(self._generar_imagen_ticket_sel)
         f2.addWidget(btn_img)
 
-        btn_eliminar = QPushButton("Eliminar orden")
+        btn_eliminar = self._boton("Eliminar orden", "trash", jerarquia="critico", tooltip="Eliminar la orden seleccionada")
         btn_eliminar.setMinimumWidth(130)
-        btn_eliminar.setStyleSheet(ESTILO_BOTON_PELIGRO)
         btn_eliminar.clicked.connect(self._eliminar_orden_sel)
         f2.addWidget(btn_eliminar)
 
@@ -998,7 +1076,7 @@ class MainWindow(QMainWindow):
         self.lbl_patron_valor.setObjectName("FolioBadge")
         self.lbl_patron_valor.setWordWrap(True)
 
-        btn_limpiar_patron = QPushButton("Borrar patrón")
+        btn_limpiar_patron = self._boton("Borrar patrón", "x", jerarquia="secundario", tooltip="Limpiar el patrón dibujado")
         btn_limpiar_patron.setMinimumWidth(130)
         btn_limpiar_patron.clicked.connect(self.patron_canvas.limpiar_patron)
 
@@ -1065,12 +1143,12 @@ class MainWindow(QMainWindow):
         lay.addWidget(card)
 
         btns = QHBoxLayout()
-        btn_guardar = QPushButton("Guardar Orden")
-        btn_guardar.setObjectName("PrimaryBtn")
+        btns.setSpacing(12)
+        btn_guardar = self._boton("Guardar Orden", "guardar", jerarquia="principal", tooltip="Guardar la nueva orden")
         btn_guardar.setMinimumWidth(145)
         btn_guardar.clicked.connect(self._guardar_nueva_orden)
 
-        btn_limpiar = QPushButton("Limpiar")
+        btn_limpiar = self._boton("Limpiar", "refresh", jerarquia="secundario", tooltip="Limpiar todos los campos")
         btn_limpiar.setMinimumWidth(115)
         btn_limpiar.clicked.connect(self._limpiar_nueva_orden)
 
@@ -1426,10 +1504,10 @@ class MainWindow(QMainWindow):
         lay.addWidget(nota)
 
         fila_btns = QHBoxLayout()
-        btn_cancelar = QPushButton("Cancelar")
+        fila_btns.setSpacing(10)
+        btn_cancelar = self._boton("Cancelar", "cancelar", jerarquia="secundario", tooltip="Descartar cambios")
         btn_cancelar.clicked.connect(dlg.reject)
-        btn_guardar = QPushButton("Guardar cambios")
-        btn_guardar.setObjectName("PrimaryBtn")
+        btn_guardar = self._boton("Guardar cambios", "guardar", jerarquia="principal", tooltip="Guardar los cambios")
         btn_guardar.setMinimumWidth(150)
         fila_btns.addStretch()
         fila_btns.addWidget(btn_cancelar)
@@ -1583,22 +1661,21 @@ class MainWindow(QMainWindow):
         lay.addWidget(lbl_ruta)
 
         fila = QHBoxLayout()
-        fila.setSpacing(8)
-        btn_abrir = QPushButton("Abrir imagen")
+        fila.setSpacing(10)
+        btn_abrir = self._boton("Abrir imagen", "ojo", jerarquia="secundario", tooltip="Abrir la imagen del ticket")
         btn_abrir.clicked.connect(
             lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(ruta))
         )
-        btn_carpeta = QPushButton("Abrir carpeta")
+        btn_carpeta = self._boton("Abrir carpeta", "descargar", jerarquia="secundario", tooltip="Abrir la carpeta del ticket")
         btn_carpeta.clicked.connect(
             lambda: QDesktopServices.openUrl(
                 QUrl.fromLocalFile(os.path.dirname(ruta))
             )
         )
-        btn_wa = QPushButton("Enviar por WhatsApp")
-        btn_wa.setObjectName("PrimaryBtn")
-        btn_wa.setMinimumWidth(160)
+        btn_wa = self._boton("Enviar por WhatsApp", "mensajes", jerarquia="principal", object_name="PrimaryBtn", tooltip="Preparar el mensaje en WhatsApp")
+        btn_wa.setMinimumWidth(170)
         btn_wa.clicked.connect(lambda: self._enviar_wa_desde_imagen(orden, ruta))
-        btn_cerrar = QPushButton("Cerrar")
+        btn_cerrar = self._boton("Cerrar", "x", jerarquia="secundario", tooltip="Cerrar la vista previa")
         btn_cerrar.clicked.connect(dlg.accept)
         for b in (btn_abrir, btn_carpeta, btn_wa, btn_cerrar):
             fila.addWidget(b)
@@ -1711,9 +1788,8 @@ class MainWindow(QMainWindow):
         self.s_precio.setRange(0, 999999)
         self.s_precio.setDecimals(2)
         self.s_precio.setMinimumWidth(110)
-        btn_add_s = QPushButton("+ Agregar")
-        btn_add_s.setObjectName("PrimaryBtn")
-        btn_add_s.setMinimumWidth(120)
+        btn_add_s = self._boton("Agregar servicio", "mas", jerarquia="principal", object_name="PrimaryBtn", tooltip="Agregar un servicio al catálogo")
+        btn_add_s.setMinimumWidth(150)
         btn_add_s.clicked.connect(self._agregar_servicio)
         for widget in (self.s_cat, self.s_marca, self.s_modelo, self.s_nombre, self.s_precio, btn_add_s):
             row_s.addWidget(widget)
@@ -1737,9 +1813,8 @@ class MainWindow(QMainWindow):
         self.u_tipo.setPlaceholderText("Tipo")
         self.u_desc = QLineEdit()
         self.u_desc.setPlaceholderText("Descripción")
-        btn_add_u = QPushButton("+ Agregar")
-        btn_add_u.setObjectName("PrimaryBtn")
-        btn_add_u.setMinimumWidth(120)
+        btn_add_u = self._boton("Agregar ubicación", "mas", jerarquia="principal", object_name="PrimaryBtn", tooltip="Agregar una ubicación")
+        btn_add_u.setMinimumWidth(160)
         btn_add_u.clicked.connect(self._agregar_ubicacion)
         for widget in (self.u_nombre, self.u_tipo, self.u_desc, btn_add_u):
             row_u.addWidget(widget)
@@ -1793,14 +1868,13 @@ class MainWindow(QMainWindow):
         lay = QHBoxLayout(cont)
         lay.setContentsMargins(4, 2, 4, 2)
         lay.setSpacing(6)
-        btn_editar = QPushButton("Editar")
-        btn_editar.setMinimumWidth(72)
+        btn_editar = self._boton("Editar", "editar", jerarquia="secundario", object_name="AccBtn", icon_size=14)
+        btn_editar.setMinimumWidth(78)
         btn_editar.setMaximumHeight(30)
         btn_editar.clicked.connect(al_editar)
-        btn_eliminar = QPushButton("Eliminar")
-        btn_eliminar.setMinimumWidth(78)
+        btn_eliminar = self._boton("Eliminar", "trash", jerarquia="critico", object_name="AccDangerBtn", icon_size=14)
+        btn_eliminar.setMinimumWidth(84)
         btn_eliminar.setMaximumHeight(30)
-        btn_eliminar.setStyleSheet(ESTILO_BOTON_PELIGRO)
         btn_eliminar.clicked.connect(al_eliminar)
         lay.addWidget(btn_editar)
         lay.addWidget(btn_eliminar)
@@ -1901,10 +1975,10 @@ class MainWindow(QMainWindow):
         lay.addLayout(form)
 
         fila_btns = QHBoxLayout()
-        btn_cancelar = QPushButton("Cancelar")
+        fila_btns.setSpacing(10)
+        btn_cancelar = self._boton("Cancelar", "cancelar", jerarquia="secundario", tooltip="Descartar cambios")
         btn_cancelar.clicked.connect(dlg.reject)
-        btn_guardar = QPushButton("Guardar cambios")
-        btn_guardar.setObjectName("PrimaryBtn")
+        btn_guardar = self._boton("Guardar cambios", "guardar", jerarquia="principal", tooltip="Guardar los cambios")
         btn_guardar.setMinimumWidth(140)
         fila_btns.addStretch()
         fila_btns.addWidget(btn_cancelar)
@@ -1985,10 +2059,10 @@ class MainWindow(QMainWindow):
         lay.addLayout(form)
 
         fila_btns = QHBoxLayout()
-        btn_cancelar = QPushButton("Cancelar")
+        fila_btns.setSpacing(10)
+        btn_cancelar = self._boton("Cancelar", "cancelar", jerarquia="secundario", tooltip="Descartar cambios")
         btn_cancelar.clicked.connect(dlg.reject)
-        btn_guardar = QPushButton("Guardar cambios")
-        btn_guardar.setObjectName("PrimaryBtn")
+        btn_guardar = self._boton("Guardar cambios", "guardar", jerarquia="principal", tooltip="Guardar los cambios")
         btn_guardar.setMinimumWidth(140)
         fila_btns.addStretch()
         fila_btns.addWidget(btn_cancelar)
@@ -2067,12 +2141,14 @@ class MainWindow(QMainWindow):
             row.addWidget(c)
         lay.addLayout(row)
 
+        rep_card, rep_lay = _tarjeta("Reporte por categoría", "Ganancia estimada según ingresos y repuestos")
         self.tbl_rep_cat = QTableWidget(0, 5)
         self.tbl_rep_cat.setHorizontalHeaderLabels(
             ["CATEGORÍA", "ÓRDENES", "FACTURADO", "COSTO REPUESTOS", "GANANCIA ESTIMADA"]
         )
         _configurar_tabla(self.tbl_rep_cat, stretch_col=0)
-        lay.addWidget(self.tbl_rep_cat, 1)
+        rep_lay.addWidget(self.tbl_rep_cat, 1)
+        lay.addWidget(rep_card, 1)
         return w
 
     def refrescar_reportes(self):
@@ -2117,14 +2193,13 @@ class MainWindow(QMainWindow):
         self.lbl_inv_candado = QLabel("")
         self.lbl_inv_candado.setObjectName("CardSub")
 
-        self.btn_inv_candado = QPushButton("Desbloquear edición")
-        self.btn_inv_candado.setMinimumHeight(34)
+        self.btn_inv_candado = self._boton("Desbloquear edición", "ojo", jerarquia="secundario", tooltip="Iniciar sesión de edición (se pide el código maestro una vez)")
+        self.btn_inv_candado.setMinimumHeight(36)
         self.btn_inv_candado.clicked.connect(self._alternar_candado_inventario)
 
-        btn_nuevo_prod = QPushButton("+ Agregar producto")
-        btn_nuevo_prod.setObjectName("PrimaryBtn")
-        btn_nuevo_prod.setMinimumWidth(155)
-        btn_nuevo_prod.setMinimumHeight(34)
+        btn_nuevo_prod = self._boton("Agregar producto", "mas", jerarquia="principal", object_name="PrimaryBtn", tooltip="Agregar un producto o refacción")
+        btn_nuevo_prod.setMinimumWidth(165)
+        btn_nuevo_prod.setMinimumHeight(36)
         btn_nuevo_prod.clicked.connect(self._agregar_producto_inventario)
 
         head_row.addLayout(title_box)
@@ -2277,33 +2352,30 @@ class MainWindow(QMainWindow):
         lay.setContentsMargins(4, 2, 4, 2)
         lay.setSpacing(4)
 
-        btn_menos = QPushButton("-1")
+        btn_menos = self._boton_icono("menos", "IconBtn", "Restar 1 al stock", 16)
         btn_menos.setFixedWidth(34)
         btn_menos.setMaximumHeight(30)
-        btn_menos.setToolTip("Restar 1 al stock")
         btn_menos.clicked.connect(
             lambda _=False, pid=producto_id: self._ajustar_stock_rapido(pid, -1)
         )
 
-        btn_mas = QPushButton("+1")
+        btn_mas = self._boton_icono("mas", "IconBtn", "Sumar 1 al stock", 16)
         btn_mas.setFixedWidth(34)
         btn_mas.setMaximumHeight(30)
-        btn_mas.setToolTip("Sumar 1 al stock")
         btn_mas.clicked.connect(
             lambda _=False, pid=producto_id: self._ajustar_stock_rapido(pid, 1)
         )
 
-        btn_editar = QPushButton("Editar")
-        btn_editar.setMinimumWidth(68)
+        btn_editar = self._boton("Editar", "editar", jerarquia="secundario", object_name="AccBtn", icon_size=14)
+        btn_editar.setMinimumWidth(76)
         btn_editar.setMaximumHeight(30)
         btn_editar.clicked.connect(
             lambda _=False, pid=producto_id: self._editar_producto_inventario(pid)
         )
 
-        btn_eliminar = QPushButton("Eliminar")
-        btn_eliminar.setMinimumWidth(76)
+        btn_eliminar = self._boton("Eliminar", "trash", jerarquia="critico", object_name="AccDangerBtn", icon_size=14)
+        btn_eliminar.setMinimumWidth(84)
         btn_eliminar.setMaximumHeight(30)
-        btn_eliminar.setStyleSheet(ESTILO_BOTON_PELIGRO)
         btn_eliminar.clicked.connect(
             lambda _=False, pid=producto_id: self._eliminar_producto_inventario(pid)
         )
@@ -2483,10 +2555,10 @@ class MainWindow(QMainWindow):
         resultado: dict = {}
 
         fila_btns = QHBoxLayout()
-        btn_cancelar = QPushButton("Cancelar")
+        fila_btns.setSpacing(10)
+        btn_cancelar = self._boton("Cancelar", "cancelar", jerarquia="secundario", tooltip="Descartar cambios")
         btn_cancelar.clicked.connect(dlg.reject)
-        btn_guardar = QPushButton("Guardar cambios" if es_edicion else "Guardar producto")
-        btn_guardar.setObjectName("PrimaryBtn")
+        btn_guardar = self._boton("Guardar cambios" if es_edicion else "Guardar producto", "guardar", jerarquia="principal", tooltip="Guardar")
         btn_guardar.setMinimumWidth(150)
         fila_btns.addStretch()
         fila_btns.addWidget(btn_cancelar)
@@ -2589,9 +2661,9 @@ class MainWindow(QMainWindow):
         lbl_t.setObjectName("Title")
         title_box.addWidget(lbl_t)
 
-        btn_guia_adb = QPushButton("¿Cómo conectar por USB?")
+        btn_guia_adb = self._boton("¿Cómo conectar por USB?", "info", jerarquia="secundario", tooltip="Ver la guía rápida de conexión ADB")
         btn_guia_adb.clicked.connect(self._mostrar_guia_adb)
-        btn_elegir_adb = QPushButton("Elegir adb.exe")
+        btn_elegir_adb = self._boton("Elegir adb.exe", "herramienta", jerarquia="secundario", tooltip="Elegir manualmente la ruta de adb.exe")
         btn_elegir_adb.clicked.connect(self._elegir_adb_manual)
 
         head_row.addLayout(title_box)
@@ -2600,34 +2672,31 @@ class MainWindow(QMainWindow):
         head_row.addWidget(btn_guia_adb)
         lay.addLayout(head_row)
 
-        # Barra superior compartida de conexión ADB
-        conn_card = QFrame()
-        conn_card.setObjectName("SubBar")
-        conn_lay = QHBoxLayout(conn_card)
-        conn_lay.setContentsMargins(14, 10, 14, 10)
-        conn_lay.setSpacing(8)
-
+        # Tarjeta compartida de conexión ADB
+        conn_card, conn_lay = _tarjeta("Conexión ADB", "Detecta y gestiona los equipos Android conectados")
+        conn_fila = QHBoxLayout()
+        conn_fila.setSpacing(10)
         self.lbl_adb_motor = QLabel("ADB:")
         self.lbl_adb_motor.setObjectName("FolioBadge")
-        conn_lay.addWidget(self.lbl_adb_motor)
+        conn_fila.addWidget(self.lbl_adb_motor)
 
         self.cmb_adb_dispositivos = QComboBox()
-        self.cmb_adb_dispositivos.setMinimumWidth(330)
+        self.cmb_adb_dispositivos.setMinimumWidth(360)
         self.cmb_adb_dispositivos.addItem(
             "-- Pulsa «Detectar equipos» con el celular conectado --", None
         )
-        conn_lay.addWidget(self.cmb_adb_dispositivos, 1)
+        conn_fila.addWidget(self.cmb_adb_dispositivos, 1)
 
-        btn_detectar = QPushButton("Detectar equipos")
-        btn_detectar.setObjectName("PrimaryBtn")
-        btn_detectar.setMinimumWidth(145)
+        btn_detectar = self._boton("Detectar equipos", "buscar", jerarquia="principal", tooltip="Detectar los equipos Android conectados")
+        btn_detectar.setMinimumWidth(150)
         btn_detectar.clicked.connect(lambda: self._detectar_equipos_adb(silencioso=False))
-        conn_lay.addWidget(btn_detectar)
+        conn_fila.addWidget(btn_detectar)
 
-        btn_reiniciar_adb = QPushButton("Reiniciar ADB")
+        btn_reiniciar_adb = self._boton("Reiniciar ADB", "refresh", jerarquia="secundario", tooltip="Reiniciar el servidor ADB")
         btn_reiniciar_adb.clicked.connect(self._reiniciar_servidor_adb)
-        conn_lay.addWidget(btn_reiniciar_adb)
+        conn_fila.addWidget(btn_reiniciar_adb)
 
+        conn_lay.addLayout(conn_fila)
         lay.addWidget(conn_card)
 
         # Subpestañas internas dentro de Utilidades Android
@@ -2646,7 +2715,7 @@ class MainWindow(QMainWindow):
         log_head = QHBoxLayout()
         lbl_reg = QLabel("Registro de actividad ADB")
         lbl_reg.setObjectName("CardSub")
-        btn_limpiar_log = QPushButton("Limpiar registro")
+        btn_limpiar_log = self._boton("Limpiar registro", "x", jerarquia="secundario", object_name="SecondaryBtn", tooltip="Borrar el registro de actividad")
         btn_limpiar_log.setMaximumHeight(26)
         log_head.addWidget(lbl_reg)
         log_head.addStretch()
@@ -2684,11 +2753,10 @@ class MainWindow(QMainWindow):
 
         row1 = QHBoxLayout()
         row1.setSpacing(10)
-        btn_diag = QPushButton("Ejecutar diagnóstico completo")
-        btn_diag.setObjectName("PrimaryBtn")
-        btn_diag.setMinimumWidth(230)
+        btn_diag = self._boton("Ejecutar diagnóstico completo", "activity", jerarquia="principal", object_name="PrimaryBtn", tooltip="Ejecutar el diagnóstico completo del equipo")
+        btn_diag.setMinimumWidth(250)
         btn_diag.clicked.connect(self._ejecutar_diagnostico_adb)
-        btn_copiar = QPushButton("Copiar reporte")
+        btn_copiar = self._boton("Copiar reporte", "copiar", jerarquia="secundario", tooltip="Copiar el reporte al portapapeles")
         btn_copiar.clicked.connect(self._copiar_reporte_adb)
         row1.addWidget(btn_diag)
         row1.addWidget(btn_copiar)
@@ -2697,9 +2765,9 @@ class MainWindow(QMainWindow):
 
         row2 = QHBoxLayout()
         row2.setSpacing(10)
-        btn_cap = QPushButton("Captura de pantalla")
+        btn_cap = self._boton("Captura de pantalla", "camara", jerarquia="secundario", tooltip="Tomar una captura de pantalla del equipo")
         btn_cap.clicked.connect(self._capturar_pantalla_adb)
-        btn_orden = QPushButton("Enviar a Nueva Orden")
+        btn_orden = self._boton("Enviar a Nueva Orden", "mandar", jerarquia="secundario", tooltip="Pasa el diagnóstico a una nueva orden")
         btn_orden.clicked.connect(self._pasar_diag_a_nueva_orden)
         row2.addWidget(btn_cap)
         row2.addWidget(btn_orden)
@@ -2721,7 +2789,7 @@ class MainWindow(QMainWindow):
         self.cmb_adb_reboot.addItems(
             ["Reinicio normal", "Modo Recovery", "Modo Bootloader / Fastboot"]
         )
-        btn_reboot = QPushButton("Reiniciar equipo")
+        btn_reboot = self._boton("Reiniciar equipo", "reiniciar", jerarquia="secundario", tooltip="Reiniciar el equipo en el modo seleccionado")
         btn_reboot.clicked.connect(self._reiniciar_equipo_adb)
         r_row = QHBoxLayout()
         r_row.setSpacing(10)
@@ -2769,12 +2837,11 @@ class MainWindow(QMainWindow):
         top_bar = QHBoxLayout()
         top_bar.setSpacing(8)
 
-        btn_escanear = QPushButton("Escanear aplicaciones")
-        btn_escanear.setObjectName("PrimaryBtn")
-        btn_escanear.setMinimumWidth(175)
+        btn_escanear = self._boton("Escanear aplicaciones", "escudo", jerarquia="principal", object_name="PrimaryBtn", tooltip="Escanear las apps de usuario en busca de contenido sospechoso")
+        btn_escanear.setMinimumWidth(190)
         btn_escanear.clicked.connect(self._escanear_malware_adb)
 
-        btn_en_pantalla = QPushButton("¿Qué app está en pantalla?")
+        btn_en_pantalla = self._boton("¿Qué app está en pantalla?", "ojo", jerarquia="secundario", tooltip="Identificar la app que se muestra en pantalla")
         btn_en_pantalla.setToolTip(
             "Útil cuando aparece un anuncio invasivo: identifica de inmediato qué paquete lo muestra."
         )
@@ -2806,9 +2873,9 @@ class MainWindow(QMainWindow):
         )
         self.lbl_resumen_malware.setObjectName("CardSub")
 
-        btn_sel_sosp = QPushButton("Marcar sospechosas")
+        btn_sel_sosp = self._boton("Marcar sospechosas", "alerta", jerarquia="secundario", tooltip="Marcar las apps marcadas como sospechosas")
         btn_sel_sosp.clicked.connect(self._marcar_sospechosas_malware)
-        btn_desel = QPushButton("Desmarcar todo")
+        btn_desel = self._boton("Desmarcar todo", "x", jerarquia="secundario", tooltip="Desmarcar todas las apps")
         btn_desel.clicked.connect(self._desmarcar_todas_malware)
 
         mid_bar.addWidget(self.lbl_resumen_malware, 1)
@@ -2844,9 +2911,9 @@ class MainWindow(QMainWindow):
 
         b_row1 = QHBoxLayout()
         b_row1.setSpacing(10)
-        btn_quitar_ov = QPushButton("Bloquear anuncios flotantes")
+        btn_quitar_ov = self._boton("Bloquear anuncios flotantes", "escudo-check", jerarquia="secundario", tooltip="Bloquear los anuncios flotantes de las apps marcadas")
         btn_quitar_ov.clicked.connect(self._bloquear_anuncios_seleccionados)
-        btn_chrome = QPushButton("Limpiar notificaciones spam de Chrome")
+        btn_chrome = self._boton("Limpiar notificaciones spam de Chrome", "trash", jerarquia="secundario", tooltip="Limpiar las notificaciones spam de Chrome")
         btn_chrome.clicked.connect(self._limpiar_spam_chrome_adb)
         b_row1.addWidget(btn_quitar_ov)
         b_row1.addWidget(btn_chrome)
@@ -2855,11 +2922,10 @@ class MainWindow(QMainWindow):
 
         b_row2 = QHBoxLayout()
         b_row2.setSpacing(10)
-        btn_desactivar = QPushButton("Desactivar marcadas")
+        btn_desactivar = self._boton("Desactivar marcadas", "ojo-off", jerarquia="secundario", tooltip="Desactivar (ocultar) las apps marcadas")
         btn_desactivar.clicked.connect(self._desactivar_malware_seleccionado)
-        btn_desinstalar = QPushButton("Desinstalar marcadas")
-        btn_desinstalar.setStyleSheet(ESTILO_BOTON_PELIGRO)
-        btn_desinstalar.setMinimumWidth(165)
+        btn_desinstalar = self._boton("Desinstalar marcadas", "trash", jerarquia="critico", tooltip="Desinstalar las apps marcadas")
+        btn_desinstalar.setMinimumWidth(175)
         btn_desinstalar.clicked.connect(self._desinstalar_malware_seleccionado)
         b_row2.addWidget(btn_desactivar)
         b_row2.addStretch()
@@ -2887,7 +2953,7 @@ class MainWindow(QMainWindow):
         est_info.addWidget(lbl_est_t)
         est_info.addWidget(self.lbl_dns_actual)
 
-        btn_leer_dns = QPushButton("Leer DNS actual")
+        btn_leer_dns = self._boton("Leer DNS actual", "wifi", jerarquia="secundario", tooltip="Consultar el DNS privado activo en el equipo")
         btn_leer_dns.clicked.connect(self._consultar_dns_actual_adb)
 
         est_lay.addLayout(est_info, 1)
@@ -2923,18 +2989,17 @@ class MainWindow(QMainWindow):
         btns_dns = QHBoxLayout()
         btns_dns.setSpacing(8)
 
-        btn_anclar = QPushButton("Anclar DNS en el equipo")
-        btn_anclar.setObjectName("PrimaryBtn")
-        btn_anclar.setMinimumWidth(185)
+        btn_anclar = self._boton("Anclar DNS en el equipo", "escudo-check", jerarquia="principal", object_name="PrimaryBtn", tooltip="Anclar el servidor DNS privado en el equipo")
+        btn_anclar.setMinimumWidth(195)
         btn_anclar.clicked.connect(self._anclar_dns_adb)
 
-        btn_probar = QPushButton("Probar conexión DNS")
+        btn_probar = self._boton("Probar conexión DNS", "check", jerarquia="secundario", tooltip="Verificar que el DNS anclado responde")
         btn_probar.clicked.connect(self._probar_dns_adb)
 
-        btn_auto = QPushButton("Restaurar DNS automático")
+        btn_auto = self._boton("Restaurar DNS automático", "refresh", jerarquia="secundario", tooltip="Restaurar el DNS por defecto del sistema")
         btn_auto.clicked.connect(self._restaurar_dns_adb)
 
-        btn_off = QPushButton("Desactivar DNS privado")
+        btn_off = self._boton("Desactivar DNS privado", "ojo-off", jerarquia="critico", tooltip="Quitar el DNS privado anclado")
         btn_off.clicked.connect(self._desactivar_dns_adb)
 
         btns_dns.addWidget(btn_anclar)
@@ -3158,13 +3223,14 @@ class MainWindow(QMainWindow):
         lay.addWidget(lbl_r)
 
         btns = QHBoxLayout()
-        b_abrir = QPushButton("Abrir imagen")
+        btns.setSpacing(10)
+        b_abrir = self._boton("Abrir imagen", "ojo", jerarquia="secundario", tooltip="Abrir la imagen del ticket")
         b_abrir.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(ruta)))
-        b_carp = QPushButton("Abrir carpeta")
+        b_carp = self._boton("Abrir carpeta", "descargar", jerarquia="secundario", tooltip="Abrir la carpeta del ticket")
         b_carp.clicked.connect(
             lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(ruta)))
         )
-        b_cerrar = QPushButton("Cerrar")
+        b_cerrar = self._boton("Cerrar", "x", jerarquia="secundario", tooltip="Cerrar")
         b_cerrar.clicked.connect(dlg.accept)
         for b in (b_abrir, b_carp, b_cerrar):
             btns.addWidget(b)
@@ -3632,7 +3698,7 @@ class MainWindow(QMainWindow):
         self.lbl_imp_auto = QLabel("Detectando la impresora predeterminada de Windows...")
         self.lbl_imp_auto.setObjectName("CardSub")
         self.lbl_imp_auto.setWordWrap(True)
-        btn_probar_imp = QPushButton("Probar impresión")
+        btn_probar_imp = self._boton("Probar impresión", "imprimir", jerarquia="secundario", tooltip="Imprimir una prueba de ticket")
         btn_probar_imp.setMinimumWidth(160)
         btn_probar_imp.clicked.connect(self._probar_impresora)
         imp_lay.addWidget(lbl_imp_t)
@@ -3640,28 +3706,26 @@ class MainWindow(QMainWindow):
         imp_lay.addWidget(btn_probar_imp, alignment=Qt.AlignLeft)
 
         # --- Botón de engranaje para elegir el tema (selector emergente) ---
-        self.btn_gearra_tema = QPushButton()
-        self.btn_gearra_tema.setObjectName("GearBtn")
-        self.btn_gearra_tema.setToolTip("Cambiar tema visual")
-        self.btn_gearra_tema.setIconSize(QSize(22, 22))
-        self.btn_gearra_tema.setMinimumWidth(40)
-        self.btn_gearra_tema.setMinimumHeight(40)
+        self.btn_gearra_tema = self._boton_icono("gearra", "GearBtn", "Cambiar tema visual", 22)
+        self.btn_gearra_tema.setMinimumWidth(42)
+        self.btn_gearra_tema.setMinimumHeight(42)
         self.btn_gearra_tema.clicked.connect(self._abrir_selector_tema)
 
         self.lbl_tema_actual = QLabel("Tema: " + self._tema_actual())
         self.lbl_tema_actual.setObjectName("CardSub")
 
         row_tema = QHBoxLayout()
-        row_tema.setSpacing(10)
+        row_tema.setSpacing(12)
         row_tema.addWidget(self.btn_gearra_tema)
         row_tema.addWidget(self.lbl_tema_actual)
         row_tema.addStretch()
 
         row_logo = QHBoxLayout()
+        row_logo.setSpacing(10)
         self.cfg_logo = QLineEdit(self.config.get("identidad", "logo_personalizado", ""))
-        btn_logo = QPushButton("Elegir logo")
+        btn_logo = self._boton("Elegir logo", "ojo", jerarquia="secundario", tooltip="Elegir una imagen de logo personalizada")
         btn_logo.clicked.connect(self._elegir_logo)
-        row_logo.addWidget(self.cfg_logo)
+        row_logo.addWidget(self.cfg_logo, 1)
         row_logo.addWidget(btn_logo)
 
         form.addRow("Nombre del negocio:", self.cfg_nombre)
@@ -3685,7 +3749,7 @@ class MainWindow(QMainWindow):
         )
         lbl_garantia_ayuda.setObjectName("CardSub")
         lbl_garantia_ayuda.setWordWrap(True)
-        btn_garantia_ejemplo = QPushButton("Insertar texto de ejemplo")
+        btn_garantia_ejemplo = self._boton("Insertar texto de ejemplo", "info", jerarquia="secundario", tooltip="Insertar un texto de ejemplo para las políticas de garantía")
         btn_garantia_ejemplo.clicked.connect(self._insertar_garantia_ejemplo)
 
         box_garantia = QVBoxLayout()
@@ -3710,10 +3774,8 @@ class MainWindow(QMainWindow):
         seg_lay.addWidget(lbl_seg)
         lay.addWidget(card_seg)
 
-        btn_save = QPushButton("Guardar Configuración")
-        btn_save.setObjectName("PrimaryBtn")
-        btn_save.setMinimumWidth(185)
-        btn_save.clicked.connect(self._guardar_config)
+        btn_save = self._boton("Guardar Configuración", "guardar", jerarquia="principal", object_name="PrimaryBtn", tooltip="Guardar todos los cambios de configuración")
+        btn_save.setMinimumWidth(195)
         lay.addWidget(btn_save, alignment=Qt.AlignRight)
         lay.addStretch()
 
@@ -3778,21 +3840,19 @@ class MainWindow(QMainWindow):
         ayuda.setObjectName("CardSub")
         ayuda.setWordWrap(True)
 
-        btn_ordenes = QPushButton("Borrar todas las órdenes")
-        btn_ordenes.setStyleSheet(ESTILO_BOTON_PELIGRO)
+        btn_ordenes = self._boton("Borrar todas las órdenes", "trash", jerarquia="critico", tooltip="Eliminar todas las órdenes (con respaldo)")
         btn_ordenes.clicked.connect(
             lambda _=False: self._borrar_todas_las_ordenes(autorizado=True)
         )
-        btn_base = QPushButton("Restablecer base de datos completa")
-        btn_base.setStyleSheet(ESTILO_BOTON_PELIGRO)
+        btn_base = self._boton("Restablecer base de datos completa", "base-datos", jerarquia="critico", tooltip="Restablecer toda la base de datos")
         btn_base.clicked.connect(
             lambda _=False: self._restablecer_base_completa(autorizado=True)
         )
-        btn_codigo = QPushButton("Cambiar código maestro")
+        btn_codigo = self._boton("Cambiar código maestro", "editar", jerarquia="secundario", tooltip="Definir un nuevo código maestro")
         btn_codigo.clicked.connect(
             lambda _=False: self._definir_codigo_maestro(autorizado=True)
         )
-        btn_cerrar = QPushButton("Cerrar")
+        btn_cerrar = self._boton("Cerrar", "x", jerarquia="secundario", tooltip="Cerrar")
         btn_cerrar.clicked.connect(dlg.accept)
 
         for widget in (titulo, ayuda, btn_ordenes, btn_base, btn_codigo, btn_cerrar):
@@ -3870,12 +3930,25 @@ class MainWindow(QMainWindow):
                 return
         self.cfg_garantia.setPlainText(GARANTIA_EJEMPLO)
 
+    # Icono distintivo para cada tema en el selector.
+    _ICONO_TEMA = {
+        "Mostrador Limpio": "sun",
+        "Laboratorio Minimal": "grilla",
+        "Arena Suave": "articulo",
+        "Grafito Pro": "moon",
+        "Midnight Slate": "monitor",
+        "Placa Madre Emerald": "base-datos",
+    }
+
     def _abrir_selector_tema(self):
         menu = QMenu(self)
         menu.setTitle("Cambiar tema")
         actual = self._tema_actual()
+        color = self._color_icono("IconBtn", "secundario")
         for nombre in TEMAS_ORDEN:
             accion = menu.addAction(nombre)
+            ic = self._ICONO_TEMA.get(nombre, "configuracion")
+            accion.setIcon(icono(ic, color, 18))
             accion.setCheckable(True)
             accion.setChecked(nombre == actual)
             accion.triggered.connect(lambda checked=False, n=nombre: self._cambiar_tema(n))
@@ -3883,11 +3956,8 @@ class MainWindow(QMainWindow):
         menu.exec(puntos)
 
     def _cambiar_tema(self, nuevo_tema: str):
-        if nuevo_tema not in TEMAS_ORDEN or nuevo_tema == self._tema_actual():
-            return
-        self.config.set("apariencia", "tema", nuevo_tema)
-        self.config.save()
-        self.aplicar_tema()
+        if self._gestor_temas().seleccionar(nuevo_tema):
+            self.aplicar_tema()
 
     # --- Impresión automática en la impresora predeterminada de Windows ---
     def _actualizar_estado_impresora(self):

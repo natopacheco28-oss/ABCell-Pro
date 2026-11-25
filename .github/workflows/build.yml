@@ -78,7 +78,9 @@ jobs:
             --hidden-import integrations.ticket_image `
             --hidden-import integrations.whatsapp_center `
             --hidden-import ui.theme `
+            --hidden-import ui.icons `
             --hidden-import ui.main_window `
+            --hidden-import PySide6.QtSvg `
             --add-data "config;config" `
             --add-data "core;core" `
             --add-data "database;database" `
