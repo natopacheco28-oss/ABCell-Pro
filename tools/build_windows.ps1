@@ -21,7 +21,7 @@ $python = (Resolve-Path ".venv\Scripts\python.exe").Path
 Invoke-Checked -Program $python -Arguments @("-m", "pip", "install", "-r", "requirements.txt")
 $previousPlatform = $env:QT_QPA_PLATFORM
 try {
-    $env:QT_QPA_PLATFORM = "offscreen"
+    $env:QT_QPA_PLATFORM = "windows"
     Invoke-Checked -Program $python -Arguments @("-m", "compileall", "-q", "config", "core", "database", "integrations", "services", "ui", "tools", "tests", "main.py")
     Invoke-Checked -Program $python -Arguments @("-m", "unittest", "discover", "-s", "tests", "-v")
     Invoke-Checked -Program $python -Arguments @("tools/audit_ui.py", "--output", "artifacts/ui")

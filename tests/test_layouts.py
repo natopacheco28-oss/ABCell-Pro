@@ -1,8 +1,9 @@
 """Regresión visual: requiere Qt y sus bibliotecas gráficas de sistema."""
 import os
+import sys
 import unittest
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+os.environ.setdefault("QT_QPA_PLATFORM", "windows" if sys.platform == "win32" else "offscreen")
 try:
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QVBoxLayout, QWidget
