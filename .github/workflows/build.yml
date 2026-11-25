@@ -20,6 +20,11 @@ jobs:
       - name: Instalar dependencias
         run: pip install -r requirements.txt
 
+      - name: Verificar código y regresiones
+        run: |
+          python -m compileall -q config core database integrations services ui tools tests main.py
+          python -m unittest discover -s tests -v
+
       - name: Preparar logo.ico
         shell: pwsh
         run: |
@@ -77,6 +82,7 @@ jobs:
             --hidden-import integrations.printer_58mm `
             --hidden-import integrations.ticket_image `
             --hidden-import integrations.whatsapp_center `
+            --hidden-import ui.layouts `
             --hidden-import ui.theme `
             --hidden-import ui.icons `
             --hidden-import ui.main_window `

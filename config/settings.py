@@ -54,7 +54,7 @@ DEFAULT_CONFIG = {
         ),
     },
     "apariencia": {
-        "tema": "Mostrador Limpio",
+        "tema": "Lima Pro",
     },
     "seguridad": {
         "salt": "",

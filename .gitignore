@@ -8,3 +8,10 @@ venv/
 # Assets generados / locales
 data/
 *.log
+
+# Auditorías y compilación (no versionar binarios ni datos de prueba)
+artifacts/
+build/
+dist/
+*.spec
+.cache/

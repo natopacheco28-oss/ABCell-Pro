@@ -40,6 +40,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ui.layouts import (
+    ActionButton, AdaptiveDialog, ContentCombo, FlowLayout, ReadableTable,
+    install_visual_policy, scroll_page,
+)
+
 from config.settings import ConfigManager
 from database.db_manager import DatabaseManager
 from integrations.printer_58mm import (
@@ -430,14 +435,14 @@ class PatronCanvasWidget(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
-        painter.setPen(QPen(QColor("#cbd5e1"), 1.5))
-        painter.setBrush(QColor("#f8fafc"))
+        painter.setPen(QPen(QColor("#52657b"), 1.5))
+        painter.setBrush(QColor("#0f1826"))
         painter.drawRoundedRect(self.rect().adjusted(1, 1, -1, -1), 12, 12)
 
         mapa = {num: pt for num, pt in self.puntos}
 
         if len(self.secuencia) >= 2:
-            pen_linea = QPen(QColor("#0284c7"), 4, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+            pen_linea = QPen(QColor("#c5f467"), 4, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
             painter.setPen(pen_linea)
             for i in range(len(self.secuencia) - 1):
                 p1 = mapa[self.secuencia[i]]
@@ -446,18 +451,18 @@ class PatronCanvasWidget(QWidget):
 
         if self.dibujando and self.secuencia and self.pos_actual is not None:
             ultimo_pt = mapa[self.secuencia[-1]]
-            painter.setPen(QPen(QColor("#38bdf8"), 2.5, Qt.DashLine, Qt.RoundCap))
+            painter.setPen(QPen(QColor("#d7ff8a"), 2.5, Qt.DashLine, Qt.RoundCap))
             painter.drawLine(ultimo_pt, self.pos_actual)
 
         for num, pt in self.puntos:
             seleccionado = num in self.secuencia
             if seleccionado:
-                painter.setPen(QPen(QColor("#0284c7"), 2))
-                painter.setBrush(QColor("#e0f2fe"))
+                painter.setPen(QPen(QColor("#c5f467"), 2))
+                painter.setBrush(QColor("#253623"))
                 painter.drawEllipse(pt, 16, 16)
 
                 painter.setPen(Qt.NoPen)
-                painter.setBrush(QColor("#0284c7"))
+                painter.setBrush(QColor("#c5f467"))
                 painter.drawEllipse(pt, 10, 10)
 
                 painter.setPen(QColor("#ffffff"))
@@ -498,13 +503,13 @@ def _configurar_tabla(tabla: QTableWidget, stretch_col: int = -1):
     tabla.setSelectionBehavior(QTableWidget.SelectRows)
     tabla.setEditTriggers(QTableWidget.NoEditTriggers)
     tabla.verticalHeader().setVisible(False)
-    tabla.verticalHeader().setDefaultSectionSize(46)
+    tabla.verticalHeader().setDefaultSectionSize(64)
     tabla.setShowGrid(False)
     header = tabla.horizontalHeader()
     header.setSectionResizeMode(QHeaderView.Interactive)
-    header.setStretchLastSection(True)
+    header.setStretchLastSection(False)
     if 0 <= stretch_col < tabla.columnCount():
-        header.setSectionResizeMode(stretch_col, QHeaderView.Stretch)
+        header.setSectionResizeMode(stretch_col, QHeaderView.Interactive)
 
 
 def _tarjeta(titulo: str = "", subtitulo: str = "", margenes=(18, 16, 18, 16)) -> tuple:
@@ -533,7 +538,7 @@ def _etiqueta(texto: str, object_name: str) -> QLabel:
 
 def _fila(espacio: int = 10) -> QHBoxLayout:
     """Fila horizontal con separación uniforme entre controles."""
-    fila = QHBoxLayout()
+    fila = FlowLayout()
     fila.setSpacing(espacio)
     fila.setContentsMargins(0, 0, 0, 0)
     return fila
@@ -570,8 +575,9 @@ class MainWindow(QMainWindow):
 
         nombre_negocio = self.config.get("identidad", "nombre_establecimiento", "ABCell")
         self.setWindowTitle(f"{nombre_negocio} — Taller")
-        self.resize(1360, 820)
-        self.setMinimumSize(1060, 700)
+        self.resize(1440, 900)
+        self.setMinimumSize(900, 600)
+        install_visual_policy(QApplication.instance())
 
         self._build_ui()
         self._aplicar_icono_abcell()
@@ -626,6 +632,10 @@ class MainWindow(QMainWindow):
         con el tema activo (directriz: iconografía monocromática coherente).
         """
         p = self._paleta_actual()
+        if object_name == "WarningBtn":
+            return p["warning_fg"]
+        if object_name in ("DangerBtn", "AccDangerBtn"):
+            return p["danger_fg"]
         if object_name == "PrimaryBtn":
             return p["primary_fg"]
         if object_name == "DangerBtn":
@@ -661,7 +671,7 @@ class MainWindow(QMainWindow):
                 "secundario": "SecondaryBtn",
                 "critico": "DangerBtn",
             }.get(jerarquia, "SecondaryBtn")
-        boton = QPushButton(texto)
+        boton = ActionButton(texto)
         boton.setObjectName(object_name)
         if tooltip:
             boton.setToolTip(tooltip)
@@ -674,7 +684,7 @@ class MainWindow(QMainWindow):
         return boton
 
     def _boton_icono(self, icono_nombre: str, object_name: str = "IconBtn", tooltip: str = "", tamano: int = 20) -> QPushButton:
-        boton = QPushButton()
+        boton = ActionButton()
         boton.setObjectName(object_name)
         if tooltip:
             boton.setToolTip(tooltip)
@@ -701,7 +711,7 @@ class MainWindow(QMainWindow):
 
     def aplicar_tema(self):
         g = self._gestor_temas()
-        self.setStyleSheet(g.qss())
+        QApplication.instance().setStyleSheet(g.qss())
         self._actualizar_iconos_botones()
         if hasattr(self, "lbl_tema_actual"):
             self.lbl_tema_actual.setText(f"Tema: {g.actual()}")
@@ -719,13 +729,14 @@ class MainWindow(QMainWindow):
 
         sidebar = QFrame()
         sidebar.setObjectName("Sidebar")
-        sidebar.setFixedWidth(240)
+        sidebar.setMinimumWidth(276)
+        sidebar.setMaximumWidth(340)
         self.sidebar = sidebar
         sb_lay = QVBoxLayout(sidebar)
         sb_lay.setContentsMargins(16, 24, 16, 20)
         sb_lay.setSpacing(8)
 
-        brand_row = QHBoxLayout()
+        brand_row = FlowLayout()
         brand_row.setSpacing(12)
         self.lbl_logo_sidebar = QLabel()
         self.lbl_logo_sidebar.setFixedSize(44, 44)
@@ -758,30 +769,25 @@ class MainWindow(QMainWindow):
         ]
         for texto, icono_nombre, idx in secciones:
             btn = self._boton(texto, icono_nombre, jerarquia="secundario", object_name="NavBtn")
-            btn.setMinimumHeight(46)
+            btn.setMinimumHeight(48)
             btn.clicked.connect(lambda checked=False, i=idx: self.ir_a_seccion(i))
             sb_lay.addWidget(btn)
             self.nav_buttons.append(btn)
 
         sb_lay.addStretch(1)
 
-        btn_sync = self._boton("Refrescar datos", "refresh", jerarquia="secundario", tooltip="Recargar datos del taller")
-        btn_sync.setMinimumHeight(44)
-        btn_sync.clicked.connect(self.refrescar_todo)
-        sb_lay.addWidget(btn_sync)
-
         body.addWidget(sidebar)
 
         self.stack = QStackedWidget()
         body.addWidget(self.stack, 1)
 
-        self.stack.addWidget(self._build_taller_ordenes_tab())
-        self.stack.addWidget(self._build_nueva_orden_tab())
-        self.stack.addWidget(self._build_inventario_tab())
-        self.stack.addWidget(self._build_catalogo_ubicaciones_tab())
-        self.stack.addWidget(self._build_reportes_tab())
-        self.stack.addWidget(self._build_utilidades_android_tab())
-        self.stack.addWidget(self._build_config_tab())
+        self.stack.addWidget(scroll_page(self._build_taller_ordenes_tab()))
+        self.stack.addWidget(scroll_page(self._build_nueva_orden_tab()))
+        self.stack.addWidget(scroll_page(self._build_inventario_tab()))
+        self.stack.addWidget(scroll_page(self._build_catalogo_ubicaciones_tab()))
+        self.stack.addWidget(scroll_page(self._build_reportes_tab()))
+        self.stack.addWidget(scroll_page(self._build_utilidades_android_tab()))
+        self.stack.addWidget(scroll_page(self._build_config_tab()))
 
         outer.addLayout(body, 1)
         self.ir_a_seccion(0)
@@ -791,7 +797,7 @@ class MainWindow(QMainWindow):
         if pm is None or pm.isNull():
             label.setText("AB")
             label.setStyleSheet(
-                "background-color: #e0f2fe; color: #0284c7; border-radius: 10px; font-weight: 800; font-size: 13px;"
+                "background-color: #253623; color: #c5f467; border-radius: 10px; font-weight: 800; font-size: 13px;"
             )
             return
         label.setStyleSheet("background-color: transparent;")
@@ -837,7 +843,7 @@ class MainWindow(QMainWindow):
         lay.setContentsMargins(26, 20, 26, 20)
         lay.setSpacing(14)
 
-        stage_bar = QHBoxLayout()
+        stage_bar = FlowLayout()
         stage_bar.setSpacing(8)
         etapas = [
             ("Todas", "Todas"),
@@ -847,7 +853,7 @@ class MainWindow(QMainWindow):
         ]
         self.stage_buttons.clear()
         for etiqueta, clave in etapas:
-            b = QPushButton(etiqueta)
+            b = ActionButton(etiqueta)
             b.setObjectName("StageTab")
             b.setProperty("active", clave == self.etapa_filtro)
             b.clicked.connect(lambda checked=False, k=clave: self._seleccionar_etapa(k))
@@ -862,19 +868,19 @@ class MainWindow(QMainWindow):
         fc_lay.setContentsMargins(20, 18, 20, 18)
         fc_lay.setSpacing(10)
 
-        fila_filtros = QHBoxLayout()
+        fila_filtros = FlowLayout()
         fila_filtros.setSpacing(10)
         self.txt_buscar_orden = QLineEdit()
         self.txt_buscar_orden.setPlaceholderText("Buscar cliente, equipo o falla [ENTER]")
         self.txt_buscar_orden.setMinimumWidth(260)
         self.txt_buscar_orden.textChanged.connect(self.refrescar_ordenes)
 
-        self.cmb_filtro_estatus = QComboBox()
+        self.cmb_filtro_estatus = ContentCombo()
         self.cmb_filtro_estatus.setMinimumWidth(180)
         self.cmb_filtro_estatus.addItems(["Todos"] + ESTATUS_ORDEN)
         self.cmb_filtro_estatus.currentTextChanged.connect(self.refrescar_ordenes)
 
-        self.cmb_filtro_cat = QComboBox()
+        self.cmb_filtro_cat = ContentCombo()
         self.cmb_filtro_cat.setMinimumWidth(160)
         self.cmb_filtro_cat.addItems(["Todas"] + CATEGORIAS_EQUIPO)
         self.cmb_filtro_cat.currentTextChanged.connect(self.refrescar_ordenes)
@@ -898,7 +904,7 @@ class MainWindow(QMainWindow):
         tc_lay.setContentsMargins(20, 18, 20, 18)
         tc_lay.setSpacing(10)
 
-        t_head = QHBoxLayout()
+        t_head = FlowLayout()
         t_head.setSpacing(8)
         lbl_o = QLabel("Órdenes")
         lbl_o.setObjectName("Title")
@@ -914,7 +920,7 @@ class MainWindow(QMainWindow):
         tc_lay.addLayout(t_head)
         tc_lay.addWidget(ayuda_tbl)
 
-        self.tbl_ordenes = QTableWidget(0, 8)
+        self.tbl_ordenes = ReadableTable(0, 8)
         self.tbl_ordenes.setHorizontalHeaderLabels(
             ["N°", "ESTADO", "EQUIPO / MODELO", "CLIENTE", "UBICACIÓN", "FALLA", "PRECIO", "SALDO"]
         )
@@ -931,7 +937,7 @@ class MainWindow(QMainWindow):
         pa_lay.setContentsMargins(20, 14, 20, 14)
         pa_lay.setSpacing(12)
 
-        f1 = QHBoxLayout()
+        f1 = FlowLayout()
         f1.setSpacing(8)
         self.lbl_folio_sel = QLabel("Selecciona una orden")
         self.lbl_folio_sel.setObjectName("FolioBadge")
@@ -939,13 +945,13 @@ class MainWindow(QMainWindow):
         f1.addWidget(self.lbl_folio_sel)
 
         f1.addWidget(QLabel("Estado:"))
-        self.cmb_orden_estatus = QComboBox()
+        self.cmb_orden_estatus = ContentCombo()
         self.cmb_orden_estatus.setMinimumWidth(160)
         self.cmb_orden_estatus.addItems(ESTATUS_ORDEN)
         f1.addWidget(self.cmb_orden_estatus)
 
         f1.addWidget(QLabel("Ubicación:"))
-        self.cmb_orden_ubicacion = QComboBox()
+        self.cmb_orden_ubicacion = ContentCombo()
         self.cmb_orden_ubicacion.setMinimumWidth(155)
         f1.addWidget(self.cmb_orden_ubicacion)
 
@@ -962,7 +968,7 @@ class MainWindow(QMainWindow):
         f1.addWidget(btn_editar_orden)
         pa_lay.addLayout(f1)
 
-        f2 = QHBoxLayout()
+        f2 = FlowLayout()
         f2.setSpacing(8)
         f2.addWidget(QLabel("Abono:"))
         self.spn_orden_abono = QDoubleSpinBox()
@@ -972,7 +978,7 @@ class MainWindow(QMainWindow):
         f2.addWidget(self.spn_orden_abono)
 
         f2.addWidget(QLabel("Método:"))
-        self.cmb_orden_mpago = QComboBox()
+        self.cmb_orden_mpago = ContentCombo()
         self.cmb_orden_mpago.setMinimumWidth(130)
         self.cmb_orden_mpago.addItems(METODOS_PAGO)
         f2.addWidget(self.cmb_orden_mpago)
@@ -1027,22 +1033,16 @@ class MainWindow(QMainWindow):
         lbl.setObjectName("Title")
         lay.addWidget(lbl)
 
-        card = QFrame()
-        card.setObjectName("Card")
-        form = QFormLayout(card)
-        form.setSpacing(12)
-        form.setContentsMargins(20, 20, 20, 20)
-
         self.no_cliente = QLineEdit()
         self.no_cliente.setPlaceholderText("Nombre completo del cliente")
         self.no_tel = QLineEdit()
         self.no_tel.setPlaceholderText("Ej. 9861234567")
 
-        self.no_cat = QComboBox()
+        self.no_cat = ContentCombo()
         self.no_cat.addItems(CATEGORIAS_EQUIPO)
         self.no_cat.currentTextChanged.connect(self._actualizar_subcategorias_marca)
 
-        self.no_marca = QComboBox()
+        self.no_marca = ContentCombo()
         self.no_marca.setEditable(True)
         self.no_marca.setInsertPolicy(QComboBox.NoInsert)
 
@@ -1058,7 +1058,7 @@ class MainWindow(QMainWindow):
 
         patron_box = QFrame()
         patron_box.setObjectName("SubBar")
-        pb_lay = QHBoxLayout(patron_box)
+        pb_lay = FlowLayout(patron_box)
         pb_lay.setContentsMargins(12, 10, 12, 10)
         pb_lay.setSpacing(14)
 
@@ -1089,13 +1089,13 @@ class MainWindow(QMainWindow):
         self.no_estado_fisico = QLineEdit()
         self.no_estado_fisico.setPlaceholderText("Observaciones físicas al recibir")
 
-        self.no_servicio_cat = QComboBox()
+        self.no_servicio_cat = ContentCombo()
         self.no_servicio_cat.currentIndexChanged.connect(self._aplicar_servicio_catalogo)
 
         self.no_falla = QLineEdit()
         self.no_falla.setPlaceholderText("Falla o servicio solicitado")
 
-        self.no_ubicacion = QComboBox()
+        self.no_ubicacion = ContentCombo()
 
         self.no_costo_rep = QDoubleSpinBox()
         self.no_costo_rep.setRange(0, 999999)
@@ -1111,28 +1111,43 @@ class MainWindow(QMainWindow):
         self.no_anticipo.setDecimals(2)
         self.no_anticipo.valueChanged.connect(self._recalcular_saldo_nueva_orden)
 
-        self.no_metodo_pago = QComboBox()
+        self.no_metodo_pago = ContentCombo()
         self.no_metodo_pago.addItems(METODOS_PAGO)
 
         self.lbl_no_saldo = QLabel("$0.00")
         self.lbl_no_saldo.setObjectName("MetricValue")
 
         self.no_notas = QPlainTextEdit()
-        self.no_notas.setMaximumHeight(68)
+        self.no_notas.setMinimumHeight(120)
 
+        def seccion(titulo, ayuda):
+            tarjeta, contenido = _tarjeta(titulo, ayuda)
+            formulario = QFormLayout()
+            formulario.setRowWrapPolicy(QFormLayout.WrapLongRows)
+            formulario.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+            formulario.setSpacing(14)
+            contenido.addLayout(formulario)
+            lay.addWidget(tarjeta)
+            return formulario
+
+        form = seccion("01 · Cliente", "Datos de contacto para el seguimiento de la reparación")
         form.addRow("Cliente *:", self.no_cliente)
         form.addRow("Teléfono / WA *:", self.no_tel)
+        form = seccion("02 · Equipo", "Tipo de equipo, identificación y estado de recepción")
         form.addRow("Categoría:", self.no_cat)
         form.addRow("Marca / Consola *:", self.no_marca)
         form.addRow("Modelo / Versión *:", self.no_modelo)
         form.addRow("Color:", self.no_color)
         form.addRow("IMEI / Serie:", self.no_imei)
-        form.addRow("PIN / Contraseña:", self.no_pin)
-        form.addRow("Patrón (dibujo):", patron_box)
         form.addRow("Estado físico:", self.no_estado_fisico)
-        form.addRow("Servicio del catálogo:", self.no_servicio_cat)
+        form = seccion("03 · Diagnóstico y servicio", "Elige un servicio rápido o describe la falla reportada")
+        form.addRow("Servicio rápido:", self.no_servicio_cat)
         form.addRow("Falla reportada *:", self.no_falla)
         form.addRow("Ubicación física:", self.no_ubicacion)
+        form = seccion("04 · Clave y patrón", "Datos de acceso proporcionados por el cliente")
+        form.addRow("PIN / Contraseña:", self.no_pin)
+        form.addRow("Patrón (dibujo):", patron_box)
+        form = seccion("05 · Importes y notas", "Revisa el anticipo y el saldo antes de guardar")
         form.addRow("Costo repuesto:", self.no_costo_rep)
         form.addRow("Costo total:", self.no_costo_total)
         form.addRow("Anticipo:", self.no_anticipo)
@@ -1140,9 +1155,7 @@ class MainWindow(QMainWindow):
         form.addRow("Saldo restante:", self.lbl_no_saldo)
         form.addRow("Notas internas:", self.no_notas)
 
-        lay.addWidget(card)
-
-        btns = QHBoxLayout()
+        btns = FlowLayout()
         btns.setSpacing(12)
         btn_guardar = self._boton("Guardar Orden", "guardar", jerarquia="principal", tooltip="Guardar la nueva orden")
         btn_guardar.setMinimumWidth(145)
@@ -1410,7 +1423,7 @@ class MainWindow(QMainWindow):
         if not o:
             return
 
-        dlg = QDialog(self)
+        dlg = AdaptiveDialog(self)
         dlg.setWindowTitle(f"Editar orden #{folio:04d}")
         dlg.setMinimumWidth(480)
         lay = QVBoxLayout(dlg)
@@ -1426,10 +1439,10 @@ class MainWindow(QMainWindow):
 
         txt_cliente = QLineEdit(o.get("cliente_nombre", ""))
         txt_tel = QLineEdit(o.get("cliente_tel", ""))
-        cmb_cat = QComboBox()
+        cmb_cat = ContentCombo()
         cmb_cat.addItems(CATEGORIAS_EQUIPO)
         cmb_cat.setCurrentText(o.get("categoria", "Celulares"))
-        cmb_marca = QComboBox()
+        cmb_marca = ContentCombo()
         cmb_marca.setEditable(True)
         cmb_marca.setInsertPolicy(QComboBox.NoInsert)
         txt_modelo = QLineEdit(o.get("modelo", ""))
@@ -1440,13 +1453,13 @@ class MainWindow(QMainWindow):
         txt_patron.setPlaceholderText("Ej. 1 -> 2 -> 3 (o Sin patrón)")
         txt_estado = QLineEdit(o.get("estado_fisico", ""))
         txt_falla = QLineEdit(o.get("falla", ""))
-        cmb_ubic = QComboBox()
+        cmb_ubic = ContentCombo()
         for u in self.service.listar_ubicaciones(solo_activas=True):
             cmb_ubic.addItem(u["nombre"])
         if o.get("ubicacion") and cmb_ubic.findText(o.get("ubicacion", "")) < 0:
             cmb_ubic.addItem(o.get("ubicacion", ""))
         cmb_ubic.setCurrentText(o.get("ubicacion", "Sin asignar"))
-        cmb_estatus = QComboBox()
+        cmb_estatus = ContentCombo()
         cmb_estatus.addItems(ESTATUS_ORDEN)
         cmb_estatus.setCurrentText(o.get("estatus", "Recibido"))
         spn_rep = QDoubleSpinBox()
@@ -1458,7 +1471,7 @@ class MainWindow(QMainWindow):
         spn_total.setDecimals(2)
         spn_total.setValue(float(o.get("costo_total") or 0.0))
         txt_notas = QPlainTextEdit(o.get("notas_internas", ""))
-        txt_notas.setMaximumHeight(60)
+        txt_notas.setMinimumHeight(120)
 
         def _cargar_marcas(categoria: str):
             opciones = SUBCATEGORIAS_POR_CATEGORIA.get(categoria, ["Otra marca"])
@@ -1503,7 +1516,7 @@ class MainWindow(QMainWindow):
         nota.setWordWrap(True)
         lay.addWidget(nota)
 
-        fila_btns = QHBoxLayout()
+        fila_btns = FlowLayout()
         fila_btns.setSpacing(10)
         btn_cancelar = self._boton("Cancelar", "cancelar", jerarquia="secundario", tooltip="Descartar cambios")
         btn_cancelar.clicked.connect(dlg.reject)
@@ -1624,7 +1637,7 @@ class MainWindow(QMainWindow):
 
     def _mostrar_dialogo_imagen_ticket(self, orden: dict, ruta: str):
         folio = int(orden.get("folio") or 0)
-        dlg = QDialog(self)
+        dlg = AdaptiveDialog(self)
         dlg.setWindowTitle(f"Ticket digital — Folio #{folio:04d}")
         dlg.setMinimumWidth(520)
         lay = QVBoxLayout(dlg)
@@ -1660,7 +1673,7 @@ class MainWindow(QMainWindow):
         lbl_ruta.setWordWrap(True)
         lay.addWidget(lbl_ruta)
 
-        fila = QHBoxLayout()
+        fila = FlowLayout()
         fila.setSpacing(10)
         btn_abrir = self._boton("Abrir imagen", "ojo", jerarquia="secundario", tooltip="Abrir la imagen del ticket")
         btn_abrir.clicked.connect(
@@ -1773,9 +1786,9 @@ class MainWindow(QMainWindow):
 
         p_serv = QWidget()
         l_serv = QVBoxLayout(p_serv)
-        row_s = QHBoxLayout()
+        row_s = FlowLayout()
         row_s.setSpacing(8)
-        self.s_cat = QComboBox()
+        self.s_cat = ContentCombo()
         self.s_cat.setMinimumWidth(125)
         self.s_cat.addItems(CATEGORIAS_EQUIPO)
         self.s_marca = QLineEdit()
@@ -1795,7 +1808,7 @@ class MainWindow(QMainWindow):
             row_s.addWidget(widget)
         l_serv.addLayout(row_s)
 
-        self.tbl_servicios = QTableWidget(0, 6)
+        self.tbl_servicios = ReadableTable(0, 6)
         self.tbl_servicios.setHorizontalHeaderLabels(
             ["ID", "CATEGORÍA", "MARCA / MODELO", "SERVICIO", "PRECIO", "ACCIONES"]
         )
@@ -1805,7 +1818,7 @@ class MainWindow(QMainWindow):
 
         p_ub = QWidget()
         l_ub = QVBoxLayout(p_ub)
-        row_u = QHBoxLayout()
+        row_u = FlowLayout()
         row_u.setSpacing(8)
         self.u_nombre = QLineEdit()
         self.u_nombre.setPlaceholderText("Ubicación (ej. Estante A-1)")
@@ -1820,7 +1833,7 @@ class MainWindow(QMainWindow):
             row_u.addWidget(widget)
         l_ub.addLayout(row_u)
 
-        self.tbl_ubicaciones = QTableWidget(0, 5)
+        self.tbl_ubicaciones = ReadableTable(0, 5)
         self.tbl_ubicaciones.setHorizontalHeaderLabels(
             ["ID", "NOMBRE", "TIPO", "DESCRIPCIÓN", "ACCIONES"]
         )
@@ -1828,8 +1841,8 @@ class MainWindow(QMainWindow):
         self.tbl_ubicaciones.setColumnWidth(4, 170)
         l_ub.addWidget(self.tbl_ubicaciones, 1)
 
-        tabs.addTab(p_serv, "Servicios")
-        tabs.addTab(p_ub, "Ubicaciones")
+        tabs.addTab(scroll_page(p_serv), "Servicios")
+        tabs.addTab(scroll_page(p_ub), "Ubicaciones")
         lay.addWidget(tabs, 1)
         return w
 
@@ -1870,11 +1883,9 @@ class MainWindow(QMainWindow):
         lay.setSpacing(6)
         btn_editar = self._boton("Editar", "editar", jerarquia="secundario", object_name="AccBtn", icon_size=14)
         btn_editar.setMinimumWidth(78)
-        btn_editar.setMaximumHeight(30)
         btn_editar.clicked.connect(al_editar)
         btn_eliminar = self._boton("Eliminar", "trash", jerarquia="critico", object_name="AccDangerBtn", icon_size=14)
         btn_eliminar.setMinimumWidth(84)
-        btn_eliminar.setMaximumHeight(30)
         btn_eliminar.clicked.connect(al_eliminar)
         lay.addWidget(btn_editar)
         lay.addWidget(btn_eliminar)
@@ -1946,7 +1957,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "No encontrado", "El servicio ya no existe.")
             return
 
-        dlg = QDialog(self)
+        dlg = AdaptiveDialog(self)
         dlg.setWindowTitle("Editar servicio")
         dlg.setMinimumWidth(420)
         lay = QVBoxLayout(dlg)
@@ -1956,7 +1967,7 @@ class MainWindow(QMainWindow):
         form = QFormLayout()
         form.setSpacing(8)
 
-        cmb_cat = QComboBox()
+        cmb_cat = ContentCombo()
         cmb_cat.addItems(CATEGORIAS_EQUIPO)
         cmb_cat.setCurrentText(s.get("categoria", "Celulares"))
         txt_marca = QLineEdit(s.get("marca", ""))
@@ -1974,7 +1985,7 @@ class MainWindow(QMainWindow):
         form.addRow("Precio:", spn_precio)
         lay.addLayout(form)
 
-        fila_btns = QHBoxLayout()
+        fila_btns = FlowLayout()
         fila_btns.setSpacing(10)
         btn_cancelar = self._boton("Cancelar", "cancelar", jerarquia="secundario", tooltip="Descartar cambios")
         btn_cancelar.clicked.connect(dlg.reject)
@@ -2039,7 +2050,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "No encontrada", "La ubicación ya no existe.")
             return
 
-        dlg = QDialog(self)
+        dlg = AdaptiveDialog(self)
         dlg.setWindowTitle("Editar ubicación")
         dlg.setMinimumWidth(420)
         lay = QVBoxLayout(dlg)
@@ -2058,7 +2069,7 @@ class MainWindow(QMainWindow):
         form.addRow("Descripción:", txt_desc)
         lay.addLayout(form)
 
-        fila_btns = QHBoxLayout()
+        fila_btns = FlowLayout()
         fila_btns.setSpacing(10)
         btn_cancelar = self._boton("Cancelar", "cancelar", jerarquia="secundario", tooltip="Descartar cambios")
         btn_cancelar.clicked.connect(dlg.reject)
@@ -2129,7 +2140,7 @@ class MainWindow(QMainWindow):
         lbl.setObjectName("Title")
         lay.addWidget(lbl)
 
-        row = QHBoxLayout()
+        row = FlowLayout()
         row.setSpacing(12)
         c_dia, self.r_dia, _ = _make_metric_card("Ingresos del Día", "$0.00", "Abonos y cobros hoy")
         c_mes, self.r_mes, _ = _make_metric_card("Ingresos del Mes", "$0.00", "Flujo mensual")
@@ -2142,7 +2153,7 @@ class MainWindow(QMainWindow):
         lay.addLayout(row)
 
         rep_card, rep_lay = _tarjeta("Reporte por categoría", "Ganancia estimada según ingresos y repuestos")
-        self.tbl_rep_cat = QTableWidget(0, 5)
+        self.tbl_rep_cat = ReadableTable(0, 5)
         self.tbl_rep_cat.setHorizontalHeaderLabels(
             ["CATEGORÍA", "ÓRDENES", "FACTURADO", "COSTO REPUESTOS", "GANANCIA ESTIMADA"]
         )
@@ -2183,7 +2194,7 @@ class MainWindow(QMainWindow):
         lay.setContentsMargins(26, 20, 26, 20)
         lay.setSpacing(14)
 
-        head_row = QHBoxLayout()
+        head_row = FlowLayout()
         title_box = QVBoxLayout()
         title_box.setSpacing(2)
         lbl_t = QLabel("Inventario de Productos y Refacciones")
@@ -2194,12 +2205,12 @@ class MainWindow(QMainWindow):
         self.lbl_inv_candado.setObjectName("CardSub")
 
         self.btn_inv_candado = self._boton("Desbloquear edición", "ojo", jerarquia="secundario", tooltip="Iniciar sesión de edición (se pide el código maestro una vez)")
-        self.btn_inv_candado.setMinimumHeight(36)
+        self.btn_inv_candado.setMinimumHeight(44)
         self.btn_inv_candado.clicked.connect(self._alternar_candado_inventario)
 
         btn_nuevo_prod = self._boton("Agregar producto", "mas", jerarquia="principal", object_name="PrimaryBtn", tooltip="Agregar un producto o refacción")
         btn_nuevo_prod.setMinimumWidth(165)
-        btn_nuevo_prod.setMinimumHeight(36)
+        btn_nuevo_prod.setMinimumHeight(44)
         btn_nuevo_prod.clicked.connect(self._agregar_producto_inventario)
 
         head_row.addLayout(title_box)
@@ -2209,7 +2220,7 @@ class MainWindow(QMainWindow):
         head_row.addWidget(btn_nuevo_prod)
         lay.addLayout(head_row)
 
-        cards_row = QHBoxLayout()
+        cards_row = FlowLayout()
         cards_row.setSpacing(12)
         c_prod, self.lbl_inv_total, self.lbl_inv_unidades = _make_metric_card(
             "Productos registrados", "0", "0 unidades disponibles"
@@ -2233,7 +2244,7 @@ class MainWindow(QMainWindow):
         tc_lay.setContentsMargins(16, 14, 16, 14)
         tc_lay.setSpacing(10)
 
-        filtros_row = QHBoxLayout()
+        filtros_row = FlowLayout()
         filtros_row.setSpacing(8)
 
         self.txt_buscar_inv = QLineEdit()
@@ -2243,12 +2254,12 @@ class MainWindow(QMainWindow):
         self.txt_buscar_inv.setMinimumWidth(280)
         self.txt_buscar_inv.textChanged.connect(self.refrescar_inventario)
 
-        self.cmb_inv_cat = QComboBox()
+        self.cmb_inv_cat = ContentCombo()
         self.cmb_inv_cat.setMinimumWidth(160)
         self.cmb_inv_cat.addItems(["Todas"] + CATEGORIAS_INVENTARIO)
         self.cmb_inv_cat.currentTextChanged.connect(self.refrescar_inventario)
 
-        self.cmb_inv_stock = QComboBox()
+        self.cmb_inv_stock = ContentCombo()
         self.cmb_inv_stock.setMinimumWidth(150)
         self.cmb_inv_stock.addItems(["Todos", "Disponible", "Stock bajo", "Agotado"])
         self.cmb_inv_stock.currentTextChanged.connect(self.refrescar_inventario)
@@ -2260,7 +2271,7 @@ class MainWindow(QMainWindow):
         filtros_row.addWidget(self.cmb_inv_stock)
         tc_lay.addLayout(filtros_row)
 
-        self.tbl_inventario = QTableWidget(0, 9)
+        self.tbl_inventario = ReadableTable(0, 9)
         self.tbl_inventario.setHorizontalHeaderLabels(
             [
                 "ID",
@@ -2301,18 +2312,18 @@ class MainWindow(QMainWindow):
             return
         if not self.config.tiene_codigo_maestro():
             self.lbl_inv_candado.setText("Edición libre (sin código maestro)")
-            self.lbl_inv_candado.setStyleSheet("color: #16a34a; font-weight: 600;")
+            self.lbl_inv_candado.setStyleSheet("color: #c5f467; font-weight: 600;")
             self.btn_inv_candado.setVisible(False)
             return
 
         self.btn_inv_candado.setVisible(True)
         if self.inventario_desbloqueado:
             self.lbl_inv_candado.setText("Edición activa")
-            self.lbl_inv_candado.setStyleSheet("color: #16a34a; font-weight: 700;")
+            self.lbl_inv_candado.setStyleSheet("color: #c5f467; font-weight: 700;")
             self.btn_inv_candado.setText("Bloquear edición")
         else:
             self.lbl_inv_candado.setText("Edición protegida")
-            self.lbl_inv_candado.setStyleSheet("color: #d97706; font-weight: 700;")
+            self.lbl_inv_candado.setStyleSheet("color: #f5b84b; font-weight: 700;")
             self.btn_inv_candado.setText("Desbloquear edición")
 
     def _alternar_candado_inventario(self):
@@ -2353,29 +2364,25 @@ class MainWindow(QMainWindow):
         lay.setSpacing(4)
 
         btn_menos = self._boton_icono("menos", "IconBtn", "Restar 1 al stock", 16)
-        btn_menos.setFixedWidth(34)
-        btn_menos.setMaximumHeight(30)
+        btn_menos.setMinimumWidth(44)
         btn_menos.clicked.connect(
             lambda _=False, pid=producto_id: self._ajustar_stock_rapido(pid, -1)
         )
 
         btn_mas = self._boton_icono("mas", "IconBtn", "Sumar 1 al stock", 16)
-        btn_mas.setFixedWidth(34)
-        btn_mas.setMaximumHeight(30)
+        btn_mas.setMinimumWidth(44)
         btn_mas.clicked.connect(
             lambda _=False, pid=producto_id: self._ajustar_stock_rapido(pid, 1)
         )
 
         btn_editar = self._boton("Editar", "editar", jerarquia="secundario", object_name="AccBtn", icon_size=14)
         btn_editar.setMinimumWidth(76)
-        btn_editar.setMaximumHeight(30)
         btn_editar.clicked.connect(
             lambda _=False, pid=producto_id: self._editar_producto_inventario(pid)
         )
 
         btn_eliminar = self._boton("Eliminar", "trash", jerarquia="critico", object_name="AccDangerBtn", icon_size=14)
         btn_eliminar.setMinimumWidth(84)
-        btn_eliminar.setMaximumHeight(30)
         btn_eliminar.clicked.connect(
             lambda _=False, pid=producto_id: self._eliminar_producto_inventario(pid)
         )
@@ -2426,10 +2433,10 @@ class MainWindow(QMainWindow):
             )
             if stock <= 0:
                 txt_stock = "0 (Agotado)"
-                color_stock = QColor("#dc2626")
+                color_stock = QColor("#ff9aab")
             elif stock <= stock_min:
                 txt_stock = f"{stock} (Bajo)"
-                color_stock = QColor("#d97706")
+                color_stock = QColor("#f5b84b")
             else:
                 txt_stock = str(stock)
                 color_stock = None
@@ -2466,7 +2473,7 @@ class MainWindow(QMainWindow):
 
     def _dialogo_producto_inventario(self, actual: dict | None = None) -> dict | None:
         es_edicion = actual is not None
-        dlg = QDialog(self)
+        dlg = AdaptiveDialog(self)
         dlg.setWindowTitle("Editar producto" if es_edicion else "Agregar producto al inventario")
         dlg.setMinimumWidth(460)
         lay = QVBoxLayout(dlg)
@@ -2482,7 +2489,7 @@ class MainWindow(QMainWindow):
         txt_nombre = QLineEdit((actual or {}).get("nombre", ""))
         txt_nombre.setPlaceholderText("Ej. Pantalla iPhone 11 Incell / Cable Tipo C")
 
-        cmb_cat = QComboBox()
+        cmb_cat = ContentCombo()
         cmb_cat.setEditable(True)
         cmb_cat.setInsertPolicy(QComboBox.NoInsert)
         cmb_cat.addItems(CATEGORIAS_INVENTARIO)
@@ -2518,7 +2525,7 @@ class MainWindow(QMainWindow):
         lbl_margen = QLabel("$0.00")
         lbl_margen.setObjectName("CardSub")
 
-        cmb_ubic = QComboBox()
+        cmb_ubic = ContentCombo()
         cmb_ubic.setEditable(True)
         cmb_ubic.setInsertPolicy(QComboBox.NoInsert)
         cmb_ubic.addItem("")
@@ -2554,7 +2561,7 @@ class MainWindow(QMainWindow):
 
         resultado: dict = {}
 
-        fila_btns = QHBoxLayout()
+        fila_btns = FlowLayout()
         fila_btns.setSpacing(10)
         btn_cancelar = self._boton("Cancelar", "cancelar", jerarquia="secundario", tooltip="Descartar cambios")
         btn_cancelar.clicked.connect(dlg.reject)
@@ -2654,40 +2661,33 @@ class MainWindow(QMainWindow):
         lay.setContentsMargins(26, 20, 26, 20)
         lay.setSpacing(14)
 
-        head_row = QHBoxLayout()
+        head_row = FlowLayout()
         title_box = QVBoxLayout()
         title_box.setSpacing(2)
         lbl_t = QLabel("Utilidades Android (ADB)")
         lbl_t.setObjectName("Title")
         title_box.addWidget(lbl_t)
 
-        btn_guia_adb = self._boton("¿Cómo conectar por USB?", "info", jerarquia="secundario", tooltip="Ver la guía rápida de conexión ADB")
-        btn_guia_adb.clicked.connect(self._mostrar_guia_adb)
-        btn_elegir_adb = self._boton("Elegir adb.exe", "herramienta", jerarquia="secundario", tooltip="Elegir manualmente la ruta de adb.exe")
-        btn_elegir_adb.clicked.connect(self._elegir_adb_manual)
-
         head_row.addLayout(title_box)
         head_row.addStretch()
-        head_row.addWidget(btn_elegir_adb)
-        head_row.addWidget(btn_guia_adb)
         lay.addLayout(head_row)
 
         # Tarjeta compartida de conexión ADB
         conn_card, conn_lay = _tarjeta("Conexión ADB", "Detecta y gestiona los equipos Android conectados")
-        conn_fila = QHBoxLayout()
+        conn_fila = FlowLayout()
         conn_fila.setSpacing(10)
         self.lbl_adb_motor = QLabel("ADB:")
         self.lbl_adb_motor.setObjectName("FolioBadge")
         conn_fila.addWidget(self.lbl_adb_motor)
 
-        self.cmb_adb_dispositivos = QComboBox()
+        self.cmb_adb_dispositivos = ContentCombo()
         self.cmb_adb_dispositivos.setMinimumWidth(360)
         self.cmb_adb_dispositivos.addItem(
-            "-- Pulsa «Detectar equipos» con el celular conectado --", None
+            "Selecciona un equipo detectado", None
         )
         conn_fila.addWidget(self.cmb_adb_dispositivos, 1)
 
-        btn_detectar = self._boton("Detectar equipos", "buscar", jerarquia="principal", tooltip="Detectar los equipos Android conectados")
+        btn_detectar = self._boton("Detectar equipos", "buscar", jerarquia="principal", object_name="WarningBtn", tooltip="Detectar los equipos Android conectados")
         btn_detectar.setMinimumWidth(150)
         btn_detectar.clicked.connect(lambda: self._detectar_equipos_adb(silencioso=False))
         conn_fila.addWidget(btn_detectar)
@@ -2701,9 +2701,9 @@ class MainWindow(QMainWindow):
 
         # Subpestañas internas dentro de Utilidades Android
         tabs_android = QTabWidget()
-        tabs_android.addTab(self._build_subtab_diagnostico_adb(), "Diagnóstico ADB")
-        tabs_android.addTab(self._build_subtab_malware_adb(), "Remoción de Malware")
-        tabs_android.addTab(self._build_subtab_dns_adb(), "Anclar DNS")
+        tabs_android.addTab(scroll_page(self._build_subtab_diagnostico_adb()), "Diagnóstico ADB")
+        tabs_android.addTab(scroll_page(self._build_subtab_malware_adb()), "Remoción de Malware")
+        tabs_android.addTab(scroll_page(self._build_subtab_dns_adb()), "Anclar DNS")
         lay.addWidget(tabs_android, 1)
 
         # Registro compacto de operaciones ADB
@@ -2712,11 +2712,10 @@ class MainWindow(QMainWindow):
         log_lay = QVBoxLayout(log_box)
         log_lay.setContentsMargins(12, 8, 12, 8)
         log_lay.setSpacing(4)
-        log_head = QHBoxLayout()
+        log_head = FlowLayout()
         lbl_reg = QLabel("Registro de actividad ADB")
         lbl_reg.setObjectName("CardSub")
         btn_limpiar_log = self._boton("Limpiar registro", "x", jerarquia="secundario", object_name="SecondaryBtn", tooltip="Borrar el registro de actividad")
-        btn_limpiar_log.setMaximumHeight(26)
         log_head.addWidget(lbl_reg)
         log_head.addStretch()
         log_head.addWidget(btn_limpiar_log)
@@ -2724,7 +2723,7 @@ class MainWindow(QMainWindow):
 
         self.txt_adb_log = QPlainTextEdit()
         self.txt_adb_log.setReadOnly(True)
-        self.txt_adb_log.setMaximumHeight(82)
+        self.txt_adb_log.setMinimumHeight(150)
         self.txt_adb_log.setPlaceholderText(
             "Aquí se mostrarán los resultados de diagnóstico, desinstalaciones y cambios de DNS..."
         )
@@ -2751,9 +2750,9 @@ class MainWindow(QMainWindow):
         lbl_diag_t.setObjectName("CardTitle")
         d_lay.addWidget(lbl_diag_t)
 
-        row1 = QHBoxLayout()
+        row1 = FlowLayout()
         row1.setSpacing(10)
-        btn_diag = self._boton("Ejecutar diagnóstico completo", "activity", jerarquia="principal", object_name="PrimaryBtn", tooltip="Ejecutar el diagnóstico completo del equipo")
+        btn_diag = self._boton("Ejecutar diagnóstico completo", "activity", jerarquia="principal", object_name="WarningBtn", tooltip="Ejecutar el diagnóstico completo del equipo")
         btn_diag.setMinimumWidth(250)
         btn_diag.clicked.connect(self._ejecutar_diagnostico_adb)
         btn_copiar = self._boton("Copiar reporte", "copiar", jerarquia="secundario", tooltip="Copiar el reporte al portapapeles")
@@ -2763,7 +2762,7 @@ class MainWindow(QMainWindow):
         row1.addStretch()
         d_lay.addLayout(row1)
 
-        row2 = QHBoxLayout()
+        row2 = FlowLayout()
         row2.setSpacing(10)
         btn_cap = self._boton("Captura de pantalla", "camara", jerarquia="secundario", tooltip="Tomar una captura de pantalla del equipo")
         btn_cap.clicked.connect(self._capturar_pantalla_adb)
@@ -2785,13 +2784,13 @@ class MainWindow(QMainWindow):
         lbl_reb_t.setObjectName("CardTitle")
         r_lay.addWidget(lbl_reb_t)
 
-        self.cmb_adb_reboot = QComboBox()
+        self.cmb_adb_reboot = ContentCombo()
         self.cmb_adb_reboot.addItems(
             ["Reinicio normal", "Modo Recovery", "Modo Bootloader / Fastboot"]
         )
         btn_reboot = self._boton("Reiniciar equipo", "reiniciar", jerarquia="secundario", tooltip="Reiniciar el equipo en el modo seleccionado")
         btn_reboot.clicked.connect(self._reiniciar_equipo_adb)
-        r_row = QHBoxLayout()
+        r_row = FlowLayout()
         r_row.setSpacing(10)
         r_row.addWidget(QLabel("Modo:"))
         r_row.addWidget(self.cmb_adb_reboot)
@@ -2800,7 +2799,7 @@ class MainWindow(QMainWindow):
         r_lay.addLayout(r_row)
         lay.addWidget(reboot_card)
 
-        cards = QHBoxLayout()
+        cards = FlowLayout()
         cards.setSpacing(10)
         c1, self.lbl_diag_modelo, self.lbl_diag_serie = _make_metric_card(
             "Equipo detectado", "—", "Serie / IMEI pendiente"
@@ -2834,10 +2833,10 @@ class MainWindow(QMainWindow):
         lay.setContentsMargins(14, 12, 14, 12)
         lay.setSpacing(10)
 
-        top_bar = QHBoxLayout()
+        top_bar = FlowLayout()
         top_bar.setSpacing(8)
 
-        btn_escanear = self._boton("Escanear aplicaciones", "escudo", jerarquia="principal", object_name="PrimaryBtn", tooltip="Escanear las apps de usuario en busca de contenido sospechoso")
+        btn_escanear = self._boton("Escanear aplicaciones", "escudo", jerarquia="principal", object_name="WarningBtn", tooltip="Escanear las apps de usuario en busca de contenido sospechoso")
         btn_escanear.setMinimumWidth(190)
         btn_escanear.clicked.connect(self._escanear_malware_adb)
 
@@ -2847,7 +2846,7 @@ class MainWindow(QMainWindow):
         )
         btn_en_pantalla.clicked.connect(self._detectar_app_pantalla_adb)
 
-        self.cmb_filtro_malware = QComboBox()
+        self.cmb_filtro_malware = ContentCombo()
         self.cmb_filtro_malware.addItems(
             [
                 "Todas las apps de usuario",
@@ -2867,7 +2866,7 @@ class MainWindow(QMainWindow):
         top_bar.addWidget(self.txt_buscar_malware, 1)
         lay.addLayout(top_bar)
 
-        mid_bar = QHBoxLayout()
+        mid_bar = FlowLayout()
         self.lbl_resumen_malware = QLabel(
             "Escaneo pendiente. Se analizan únicamente apps instaladas por el usuario (protegiendo el sistema Android)."
         )
@@ -2883,7 +2882,7 @@ class MainWindow(QMainWindow):
         mid_bar.addWidget(btn_desel)
         lay.addLayout(mid_bar)
 
-        self.tbl_adb_malware = QTableWidget(0, 5)
+        self.tbl_adb_malware = ReadableTable(0, 5)
         self.tbl_adb_malware.setHorizontalHeaderLabels(
             [
                 "MARCAR",
@@ -2909,7 +2908,7 @@ class MainWindow(QMainWindow):
         lbl_bot_t.setObjectName("CardTitle")
         b_lay.addWidget(lbl_bot_t)
 
-        b_row1 = QHBoxLayout()
+        b_row1 = FlowLayout()
         b_row1.setSpacing(10)
         btn_quitar_ov = self._boton("Bloquear anuncios flotantes", "escudo-check", jerarquia="secundario", tooltip="Bloquear los anuncios flotantes de las apps marcadas")
         btn_quitar_ov.clicked.connect(self._bloquear_anuncios_seleccionados)
@@ -2920,9 +2919,9 @@ class MainWindow(QMainWindow):
         b_row1.addStretch()
         b_lay.addLayout(b_row1)
 
-        b_row2 = QHBoxLayout()
+        b_row2 = FlowLayout()
         b_row2.setSpacing(10)
-        btn_desactivar = self._boton("Desactivar marcadas", "ojo-off", jerarquia="secundario", tooltip="Desactivar (ocultar) las apps marcadas")
+        btn_desactivar = self._boton("Desactivar marcadas", "ojo-off", jerarquia="critico", tooltip="Desactivar (ocultar) las apps marcadas")
         btn_desactivar.clicked.connect(self._desactivar_malware_seleccionado)
         btn_desinstalar = self._boton("Desinstalar marcadas", "trash", jerarquia="critico", tooltip="Desinstalar las apps marcadas")
         btn_desinstalar.setMinimumWidth(175)
@@ -2942,7 +2941,7 @@ class MainWindow(QMainWindow):
 
         estado_card = QFrame()
         estado_card.setObjectName("SubBar")
-        est_lay = QHBoxLayout(estado_card)
+        est_lay = FlowLayout(estado_card)
         est_lay.setContentsMargins(16, 12, 16, 12)
 
         est_info = QVBoxLayout()
@@ -2969,9 +2968,9 @@ class MainWindow(QMainWindow):
         form = QFormLayout()
         form.setSpacing(10)
 
-        self.cmb_dns_preset = QComboBox()
+        self.cmb_dns_preset = ContentCombo()
         for prov in PROVEEDORES_DNS:
-            self.cmb_dns_preset.addItem(prov["nombre"], prov)
+            self.cmb_dns_preset.addItem(prov["nombre"].split(" — ")[0], prov)
         self.cmb_dns_preset.currentIndexChanged.connect(self._al_cambiar_preset_dns)
 
         self.lbl_dns_desc = QLabel("")
@@ -2986,7 +2985,7 @@ class MainWindow(QMainWindow):
         form.addRow("Servidor DNS (TLS):", self.txt_dns_hostname)
         form_lay.addLayout(form)
 
-        btns_dns = QHBoxLayout()
+        btns_dns = FlowLayout()
         btns_dns.setSpacing(8)
 
         btn_anclar = self._boton("Anclar DNS en el equipo", "escudo-check", jerarquia="principal", object_name="PrimaryBtn", tooltip="Anclar el servidor DNS privado en el equipo")
@@ -3048,31 +3047,7 @@ class MainWindow(QMainWindow):
             self.lbl_adb_motor.setToolTip(ruta)
         else:
             self.lbl_adb_motor.setText("ADB no localizado:")
-            self.lbl_adb_motor.setToolTip("Pulsa 'Elegir adb.exe' si tienes platform-tools en otra carpeta.")
-
-    def _elegir_adb_manual(self):
-        filtro = "Ejecutable ADB (adb.exe);;Todos los archivos (*)" if os.name == "nt" else "Ejecutable ADB (adb);;Todos (*)"
-        ruta, _ = QFileDialog.getOpenFileName(self, "Seleccionar ejecutable ADB", "", filtro)
-        if not ruta:
-            return
-        self.adb.establecer_ruta_personalizada(ruta)
-        self.config.set("android", "ruta_adb", ruta)
-        self.config.save()
-        self._actualizar_estado_binario_adb()
-        self._log_adb(f"Ruta ADB configurada: {ruta}")
-        self._detectar_equipos_adb(silencioso=False)
-
-    def _mostrar_guia_adb(self):
-        QMessageBox.information(
-            self,
-            "Cómo conectar un equipo Android por ADB",
-            "1. En el celular, abre Ajustes › Acerca del teléfono.\n"
-            "2. Toca 7 veces seguidas en «Número de compilación» (en Xiaomi: «Versión de MIUI / HyperOS»).\n"
-            "3. Entra a Ajustes › Sistema › Opciones de desarrollador.\n"
-            "4. Activa «Depuración por USB» (en Xiaomi activa también «Depuración USB - Ajustes de seguridad» si aparece).\n"
-            "5. Conecta el cable USB de datos a la PC y pulsa «Detectar equipos».\n"
-            "6. En la pantalla del teléfono, marca «Permitir siempre desde esta computadora» y toca Permitir.",
-        )
+            self.lbl_adb_motor.setToolTip("ADB se busca automáticamente en platform-tools y en el PATH del sistema.")
 
     def _detectar_equipos_adb(self, silencioso: bool = False) -> str | None:
         info = self._ejecutar_con_espera(self.adb.listar_dispositivos)
@@ -3208,7 +3183,7 @@ class MainWindow(QMainWindow):
         if not pm.isNull():
             QApplication.clipboard().setPixmap(pm)
 
-        dlg = QDialog(self)
+        dlg = AdaptiveDialog(self)
         dlg.setWindowTitle("Captura de pantalla del equipo")
         dlg.setMinimumWidth(460)
         lay = QVBoxLayout(dlg)
@@ -3222,7 +3197,7 @@ class MainWindow(QMainWindow):
         lbl_r.setWordWrap(True)
         lay.addWidget(lbl_r)
 
-        btns = QHBoxLayout()
+        btns = FlowLayout()
         btns.setSpacing(10)
         b_abrir = self._boton("Abrir imagen", "ojo", jerarquia="secundario", tooltip="Abrir la imagen del ticket")
         b_abrir.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(ruta)))
@@ -3363,9 +3338,9 @@ class MainWindow(QMainWindow):
 
             riesgo_item = QTableWidgetItem(app_info["riesgo"])
             if app_info["prioridad"] >= 2:
-                riesgo_item.setForeground(QColor("#dc2626"))
+                riesgo_item.setForeground(QColor("#ff9aab"))
             elif app_info["prioridad"] == 1:
-                riesgo_item.setForeground(QColor("#d97706"))
+                riesgo_item.setForeground(QColor("#f5b84b"))
             self.tbl_adb_malware.setItem(i, 1, riesgo_item)
 
             self.tbl_adb_malware.setItem(i, 2, QTableWidgetItem(app_info["package"]))
@@ -3714,13 +3689,13 @@ class MainWindow(QMainWindow):
         self.lbl_tema_actual = QLabel("Tema: " + self._tema_actual())
         self.lbl_tema_actual.setObjectName("CardSub")
 
-        row_tema = QHBoxLayout()
+        row_tema = FlowLayout()
         row_tema.setSpacing(12)
         row_tema.addWidget(self.btn_gearra_tema)
         row_tema.addWidget(self.lbl_tema_actual)
         row_tema.addStretch()
 
-        row_logo = QHBoxLayout()
+        row_logo = FlowLayout()
         row_logo.setSpacing(10)
         self.cfg_logo = QLineEdit(self.config.get("identidad", "logo_personalizado", ""))
         btn_logo = self._boton("Elegir logo", "ojo", jerarquia="secundario", tooltip="Elegir una imagen de logo personalizada")
@@ -3824,7 +3799,7 @@ class MainWindow(QMainWindow):
         elif not self._autorizar_con_codigo("entrar al modo maestro"):
             return
 
-        dlg = QDialog(self)
+        dlg = AdaptiveDialog(self)
         dlg.setWindowTitle("Modo maestro")
         dlg.setMinimumWidth(440)
         lay = QVBoxLayout(dlg)
