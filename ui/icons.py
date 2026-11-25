@@ -286,10 +286,9 @@ def _render_svg(svg: str, color: str, tamano: int) -> QPixmap:
     painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
     renderer.render(painter)
     painter.end()
-    # Escalar al tamaño pedido, conservando la transparencia.
-    return pix.scaled(
-        tamano, tamano, Qt.KeepAspectRatio, Qt.SmoothTransformation
-    )
+    # Conservar resolución real para pantallas HiDPI (tamaño lógico sin cambios).
+    pix.setDevicePixelRatio(4.0)
+    return pix
 
 
 def _fallback_dibujado(nombre: str, color: str, tamano: int) -> QPixmap:

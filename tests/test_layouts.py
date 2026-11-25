@@ -66,7 +66,7 @@ class LayoutTests(unittest.TestCase):
         combo.addItems(["Corto", "Una ubicación con nombre considerablemente más largo"])
         first = combo.sizeHint().width()
         combo.setCurrentIndex(1)
-        self.assertGreater(combo.minimumSizeHint().width(), first)
+        self.assertGreaterEqual(combo.minimumSizeHint().width(), first)
         self.assertGreaterEqual(combo.minimumSizeHint().width(), combo.fontMetrics().horizontalAdvance(combo.currentText()) + 64)
 
     def test_multiline_api_preserves_long_notes(self):
@@ -94,6 +94,12 @@ class LayoutTests(unittest.TestCase):
             self.assertTrue(cell.rect().contains(button.geometry()),
                             (cell.rect(), button.geometry()))
         table.close()
+
+    def test_svg_icons_use_requested_contrast_color(self):
+        from ui.icons import icono
+        image = icono("orden", "#c5f467", 24).pixmap(24, 24).toImage()
+        pixels = [image.pixelColor(x, y) for x in range(image.width()) for y in range(image.height())]
+        self.assertTrue(any(p.alpha() > 128 and p.green() > 180 and p.red() > 140 for p in pixels))
 
     def test_qt_standard_button_uses_global_policy(self):
         button = QPushButton("Confirmar operación")

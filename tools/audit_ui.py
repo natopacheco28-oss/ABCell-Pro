@@ -5,6 +5,7 @@ QT_SCALE_FACTOR=1.5 QT_QPA_PLATFORM=offscreen python tools/audit_ui.py --output 
 No ejecuta acciones destructivas ni conecta dispositivos: solo construye vistas.
 """
 import argparse
+import ast
 import json
 import os
 import sys
@@ -68,6 +69,11 @@ def audit(output):
                                 f"dentro_del_padre={contained}; "
                                 f"geometría={button.geometry().getRect()}, "
                                 f"padre={type(parent).__name__}:{parent.rect().getRect() if parent else None}")
+        visible_buttons = [button for button in root.findChildren(QPushButton) if button.isVisible()]
+        for index, left in enumerate(visible_buttons):
+            for right in visible_buttons[index + 1:]:
+                if left.parentWidget() is right.parentWidget() and left.geometry().intersects(right.geometry()):
+                    failures.append(f"{section}: botones superpuestos: {left.text()} / {right.text()}")
         if screenshot:
             filename = f"{len(screenshots):02d}-{section.replace('/', '-').replace(' ', '_')}.png"
             root.grab().save(str(output / filename))
@@ -167,7 +173,25 @@ def audit(output):
         finally:
             db.cerrar()
 
+    # Cobertura contra el código fuente: la auditoría falla si olvida una acción.
+    source = ast.parse((Path(__file__).resolve().parents[1] / "ui" / "main_window.py").read_text(encoding="utf-8"))
+    expected = {"Bloquear edición"}
+    for node in ast.walk(source):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            if node.func.attr == "_boton" and node.args:
+                expected.update(value.value for value in ast.walk(node.args[0])
+                                if isinstance(value, ast.Constant) and isinstance(value.value, str))
+            elif node.func.attr == "_boton_icono" and len(node.args) >= 3 and isinstance(node.args[2], ast.Constant):
+                expected.add(node.args[2].value)
+        elif isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id in ("secciones", "etapas") for target in node.targets):
+            if isinstance(node.value, ast.List):
+                expected.update(item.elts[0].value for item in node.value.elts
+                                if isinstance(item, ast.Tuple) and isinstance(item.elts[0], ast.Constant))
+    observed = {record["button"] for record in records.values()}
+    missing = sorted(expected - observed)
+    failures.extend("Botón sin comprobar: " + name for name in missing)
     result = {
+        "source_buttons_expected": sorted(expected), "source_buttons_missing": missing,
         "platform": sys.platform, "qt_scale_factor": os.environ.get("QT_SCALE_FACTOR", "1"),
         "checks": list(records.values()), "failures": failures, "screenshots": screenshots,
         "scope": "Geometría Qt y caja de contenido de botones; no sustituye prueba física de hardware ni revisión manual en Windows.",

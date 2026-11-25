@@ -2,8 +2,11 @@
 
 Todas las medidas son píxeles lógicos de Qt: escalan con el DPI del monitor.
 """
+import atexit
+import sys
+
 from PySide6.QtGui import QColor, QPalette
-from PySide6.QtCore import QEvent, QObject, QRect, QSize, Qt, QTimer
+from PySide6.QtCore import QEvent, QLibraryInfo, QObject, QRect, QSize, Qt, QTimer, QTranslator
 from PySide6.QtWidgets import (
     QAbstractSpinBox, QApplication, QComboBox, QFormLayout, QLabel, QLayout,
     QDialog, QHeaderView, QLineEdit, QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy, QSpacerItem, QStyle, QVBoxLayout,
@@ -182,6 +185,16 @@ def scroll_page(widget):
 class VisualPolicy(QObject):
     """También protege los botones creados por Qt en mensajes y diálogos nativos Qt."""
     def eventFilter(self, obj, event):
+        if sys.is_finalizing() or getattr(self, "_applying", False):
+            return False
+        self._applying = True
+        try:
+            self._apply(obj, event)
+        finally:
+            self._applying = False
+        return False
+
+    def _apply(self, obj, event):
         if event.type() in (QEvent.Polish, QEvent.Show):
             if isinstance(obj, QPushButton):
                 obj.setMaximumHeight(16777215)
@@ -231,6 +244,20 @@ def install_visual_policy(app):
         app.setPalette(palette)
         app._abcell_visual_policy = VisualPolicy(app)
         app.installEventFilter(app._abcell_visual_policy)
+        policy = app._abcell_visual_policy
+
+        def uninstall():
+            from shiboken6 import isValid
+            if isValid(app) and isValid(policy):
+                app.removeEventFilter(policy)
+
+        # Retirar el filtro antes de la destrucción Qt/shiboken al cerrar el proceso.
+        app.aboutToQuit.connect(uninstall)
+        atexit.register(uninstall)
+        translator = QTranslator(app)
+        if translator.load("qtbase_es", QLibraryInfo.path(QLibraryInfo.TranslationsPath)):
+            app.installTranslator(translator)
+            app._abcell_translator = translator
     return app._abcell_visual_policy
 
 
