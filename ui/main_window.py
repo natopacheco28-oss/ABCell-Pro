@@ -741,7 +741,6 @@ class MainWindow(QMainWindow):
         sidebar = QFrame()
         sidebar.setObjectName("Sidebar")
         sidebar.setMinimumWidth(276)
-        sidebar.setMaximumWidth(340)
         self.sidebar = sidebar
         sb_lay = QVBoxLayout(sidebar)
         sb_lay.setContentsMargins(16, 24, 16, 20)
