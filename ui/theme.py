@@ -42,7 +42,9 @@ _ALIASES = {"Mostrador Limpio": "Lima Pro", "Laboratorio Minimal": "Lima Pro",
 
 _QSS = """
 QWidget {
-    background: %(bg)s; color: %(fg)s;
+    /* Los contenedores de layouts deben dejar ver la tarjeta de su padre.
+       Un fondo opaco aquí crea rectángulos detrás de etiquetas y campos. */
+    background: transparent; color: %(fg)s;
     font-family: "Segoe UI", "Noto Sans", "DejaVu Sans", sans-serif; font-size: 13px;
     selection-background-color: %(sel_bg)s; selection-color: %(sel_fg)s;
 }

@@ -46,7 +46,7 @@ from ui.layouts import (
     install_visual_policy, scroll_page,
 )
 
-from config.branding import APP_NAME, app_icon_path, app_logo_path
+from config.branding import APP_AUTHOR, APP_NAME, app_icon_path, app_logo_path
 from config.settings import ConfigManager
 from database.db_manager import DatabaseManager
 from integrations.printer_58mm import (
@@ -792,6 +792,12 @@ class MainWindow(QMainWindow):
             self.nav_buttons.append(btn)
 
         sb_lay.addStretch(1)
+
+        self.lbl_autor = QLabel(f"Autor: {APP_AUTHOR}")
+        self.lbl_autor.setObjectName("CardSub")
+        self.lbl_autor.setWordWrap(True)
+        self.lbl_autor.setToolTip("Crédito de autoría del software; no es una firma digital de código.")
+        sb_lay.addWidget(self.lbl_autor)
 
         body.addWidget(sidebar)
 

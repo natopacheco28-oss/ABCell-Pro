@@ -13,7 +13,9 @@ VSVersionInfo(
     kids=[
         StringFileInfo([
             StringTable('040904B0', [
-                StringStruct('CompanyName', 'ABCell Tizimin'),
+                StringStruct('CompanyName', 'ABCell Profecional'),
+                StringStruct('LegalCopyright', '© 2026 ABCell Profecional'),
+                StringStruct('Comments', 'Autor del software: ABCell Profecional'),
                 StringStruct('FileDescription', 'ABCell Pro'),
                 StringStruct('FileVersion', '1.0.0.0'),
                 StringStruct('InternalName', 'ABCell Pro'),

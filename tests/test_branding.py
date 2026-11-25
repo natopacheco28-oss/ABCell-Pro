@@ -2,7 +2,7 @@ import ast
 import unittest
 from pathlib import Path
 from PIL import Image
-from config.branding import APP_NAME, app_icon_path, app_logo_path
+from config.branding import APP_AUTHOR, APP_NAME, app_icon_path, app_logo_path
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -21,6 +21,9 @@ class BrandingTests(unittest.TestCase):
         ast.parse(metadata)
         self.assertIn("StringStruct('ProductName', 'ABCell Pro')", metadata)
         self.assertIn("StringStruct('OriginalFilename', 'ABCell Pro.exe')", metadata)
+        self.assertEqual(APP_AUTHOR, "ABCell Profecional")
+        self.assertIn(f"StringStruct('CompanyName', '{APP_AUTHOR}')", metadata)
+        self.assertIn(f"StringStruct('LegalCopyright', '© 2026 {APP_AUTHOR}')", metadata)
 
     def test_both_build_methods_use_same_icon_name_and_metadata(self):
         workflow = (ROOT / ".github/workflows/build.yml").read_text(encoding="utf-8")

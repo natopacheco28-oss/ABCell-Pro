@@ -29,6 +29,34 @@ class LayoutTests(unittest.TestCase):
         for _ in range(6):
             self.app.processEvents()
 
+    def test_filter_labels_blend_into_parent_surface_in_all_themes(self):
+        from PySide6.QtWidgets import QFrame
+        from ui.main_window import _campo_filtro
+        from ui.theme import PALETAS_TEMAS
+        try:
+            for name, palette in PALETAS_TEMAS.items():
+                with self.subTest(theme=name):
+                    self.app.setStyleSheet(construir_qss(name))
+                    panel = QFrame()
+                    panel.setObjectName("SubBar")
+                    layout = QVBoxLayout(panel)
+                    field = _campo_filtro("Método de pago", ContentCombo())
+                    layout.addWidget(field)
+                    panel.resize(400, 150)
+                    panel.show()
+                    self.settle()
+                    label = field.findChild(QLabel)
+                    image = panel.grab().toImage()
+                    # A la derecha del texto: tanto el wrapper como la etiqueta
+                    # deben mostrar la superficie de SubBar, no el fondo raíz.
+                    from PySide6.QtCore import QPoint
+                    for widget in (field, label):
+                        point = widget.mapTo(panel, QPoint(widget.width() - 3, 3))
+                        self.assertEqual(image.pixelColor(point).name(), palette["subcard_bg"])
+                    panel.close()
+        finally:
+            self.app.setStyleSheet(construir_qss("Lima Pro"))
+
     def test_flow_wraps_complete_buttons(self):
         parent = QWidget()
         row = FlowLayout(parent)
@@ -135,6 +163,9 @@ class LayoutTests(unittest.TestCase):
                         self.assertEqual(scroll.horizontalScrollBar().maximum(), 0)
                 self.assertFalse(window.windowIcon().isNull())
                 self.assertIn("ABCell Pro", window.windowTitle())
+                self.assertEqual(window.lbl_autor.text(), "Autor: ABCell Profecional")
+                self.assertTrue(window.lbl_autor.isVisible())
+                self.assertTrue(window.sidebar.rect().contains(window.lbl_autor.geometry()))
             finally:
                 window.close()
                 db.cerrar()

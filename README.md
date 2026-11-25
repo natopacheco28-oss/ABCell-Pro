@@ -111,3 +111,9 @@ ABCell Pro.exe
 Se publica como artefacto **ABCell-Pro-Windows**, acompañado de **verificacion-ui-windows**. El `.exe` Windows debe compilarse en Windows: no es una compilación cruzada desde Linux.
 
 El icono del programa y del ejecutable procede del logo suministrado, convertido a ICO multirresolución por `tools/prepare_icon.py`. La marca de la aplicación es independiente del logo personalizado del taller usado en tickets. Los nombres de las carpetas de datos antiguas se conservan por compatibilidad.
+
+## Autoría y avisos de Windows
+
+La firma de autor visible es **ABCell Profecional**. También figura en los campos de empresa/autor y copyright de las propiedades de `ABCell Pro.exe`. Es un crédito de autoría, **no una firma digital Authenticode**: cambiar estos textos o el icono no elimina los avisos de SmartScreen ni acredita un editor verificado.
+
+Para distribuir con firma digital se necesita un certificado de firma de código válido emitido para el editor, firmar el `.exe` final y verificar esa firma (normalmente con sellado de tiempo). Las claves privadas deben permanecer fuera del repositorio. Incluso un ejecutable firmado puede mostrar avisos mientras adquiere reputación. Este proyecto no incluye certificado ni afirma que sus ejecutables estén firmados digitalmente.
