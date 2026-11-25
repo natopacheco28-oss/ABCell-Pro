@@ -34,8 +34,11 @@ jobs:
       - name: Compilar módulos Python
         run: python -m compileall -q config core database integrations services ui tools tests main.py
       - name: Pruebas de regresión
-        run: python -m unittest discover -s tests -v
+        run: |
+          mkdir -p artifacts/ui
+          python -m unittest discover -s tests -v > artifacts/ui/tests.log 2>&1
       - name: Geometría de todas las pantallas y diálogos
+        if: always()
         run: |
           mkdir -p artifacts/ui
           python tools/audit_ui.py --output artifacts/ui > artifacts/ui/audit.log 2>&1

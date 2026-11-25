@@ -54,8 +54,10 @@ class LayoutTests(unittest.TestCase):
         dialog.prepare_layout()
         dialog.show()
         self.settle()
-        self.assertIsNot(button.parentWidget(), dialog)
-        self.assertTrue(button.parentWidget().rect().contains(button.geometry()))
+        self.assertIs(button.parentWidget(), dialog)
+        self.assertTrue(dialog.rect().contains(button.geometry()))
+        from PySide6.QtWidgets import QScrollArea
+        self.assertTrue(dialog.findChildren(QScrollArea))
         self.assertGreaterEqual(button.height(), 44)
         dialog.close()
 

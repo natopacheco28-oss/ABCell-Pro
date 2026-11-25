@@ -245,6 +245,18 @@ class AdaptiveDialog(QDialog):
         inner = QVBoxLayout(content)
         inner.setContentsMargins(4, 4, 4, 4)
         inner.setSpacing(16)
+        # Las acciones finales quedan visibles; solo se desplaza el formulario.
+        footer = None
+        if original.count():
+            last = original.itemAt(original.count() - 1)
+            last_layout = last.layout()
+            action_row = last_layout is not None and all(
+                last_layout.itemAt(i).spacerItem() is not None
+                or isinstance(last_layout.itemAt(i).widget(), QPushButton)
+                for i in range(last_layout.count())
+            )
+            if action_row or isinstance(last.widget(), QPushButton):
+                footer = original.takeAt(original.count() - 1)
         while original.count():
             item = original.takeAt(0)
             if item.widget():
@@ -254,12 +266,17 @@ class AdaptiveDialog(QDialog):
                 inner.addLayout(item.layout())
             else:
                 inner.addItem(item)
-        original.addWidget(scroll_page(content))
+        original.addWidget(scroll_page(content), 1)
+        if footer is not None:
+            if footer.layout():
+                footer.layout().setParent(None)
+                original.addLayout(footer.layout())
+            else:
+                original.addWidget(footer.widget())
         screen = self.screen().availableGeometry()
         self.setMinimumHeight(0)
         self.setMinimumWidth(min(self.minimumWidth(), max(280, screen.width() - 40)))
-        self.resize(min(max(620, self.sizeHint().width()), screen.width() - 40),
-                    min(max(420, self.sizeHint().height()), screen.height() - 60))
+        self.resize(min(820, screen.width() - 40), min(760, screen.height() - 60))
         self.setMaximumSize(screen.width() - 24, screen.height() - 24)
 
     def exec(self):
