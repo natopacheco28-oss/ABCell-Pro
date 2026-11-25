@@ -96,6 +96,20 @@ class DatabaseManager:
         "estado": "TEXT DEFAULT 'Abierto en WA'",
     }
 
+    COLUMNAS_INVENTARIO = {
+        "codigo": "TEXT DEFAULT ''",
+        "nombre": "TEXT DEFAULT ''",
+        "categoria": "TEXT DEFAULT 'Refacciones'",
+        "marca_modelo": "TEXT DEFAULT ''",
+        "stock": "INTEGER DEFAULT 0",
+        "stock_minimo": "INTEGER DEFAULT 2",
+        "costo_compra": "REAL DEFAULT 0.0",
+        "precio_venta": "REAL DEFAULT 0.0",
+        "ubicacion": "TEXT DEFAULT ''",
+        "notas": "TEXT DEFAULT ''",
+        "fecha_actualizacion": "TEXT DEFAULT ''",
+    }
+
     def _migrar_ordenes(self):
         """Repara bases de datos antiguas para que se puedan guardar órdenes."""
         cols = self._columnas_tabla("ordenes")
@@ -145,6 +159,7 @@ class DatabaseManager:
     def _migrar_columnas(self):
         self._migrar_ordenes()
         self._agregar_columnas("notificaciones_wa", self.COLUMNAS_WA)
+        self._agregar_columnas("inventario", self.COLUMNAS_INVENTARIO)
         cols_ub = self._columnas_tabla("ubicaciones")
         if cols_ub and "activo" not in cols_ub:
             self.ejecutar(
@@ -252,6 +267,25 @@ class DatabaseManager:
             """
         )
 
+        self.ejecutar(
+            """
+            CREATE TABLE IF NOT EXISTS inventario (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                codigo TEXT DEFAULT '',
+                nombre TEXT NOT NULL,
+                categoria TEXT DEFAULT 'Refacciones',
+                marca_modelo TEXT DEFAULT '',
+                stock INTEGER DEFAULT 0,
+                stock_minimo INTEGER DEFAULT 2,
+                costo_compra REAL DEFAULT 0.0,
+                precio_venta REAL DEFAULT 0.0,
+                ubicacion TEXT DEFAULT '',
+                notas TEXT DEFAULT '',
+                fecha_actualizacion TEXT DEFAULT ''
+            )
+            """
+        )
+
     def _sembrar_datos_iniciales(self):
         existe_ub = self.consultar_uno(
             "SELECT COUNT(*) AS total FROM ubicaciones"
@@ -320,13 +354,14 @@ class DatabaseManager:
         )
 
     def restablecer_todo(self):
-        """Borra órdenes, catálogo y ubicaciones; vuelve a los datos base."""
+        """Borra órdenes, inventario, catálogo y ubicaciones; vuelve a los datos base."""
         self.restablecer_ordenes()
+        self.ejecutar("DELETE FROM inventario")
         self.ejecutar("DELETE FROM servicios_catalogo")
         self.ejecutar("DELETE FROM ubicaciones")
         self.ejecutar(
             "DELETE FROM sqlite_sequence WHERE name IN "
-            "('servicios_catalogo', 'ubicaciones')"
+            "('inventario', 'servicios_catalogo', 'ubicaciones')"
         )
         self._sembrar_datos_iniciales()
 
