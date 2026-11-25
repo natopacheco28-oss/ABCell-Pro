@@ -41,7 +41,7 @@ from PySide6.QtWidgets import (
 )
 
 from ui.layouts import (
-    ActionButton, AdaptiveDialog, ContentCombo, FlowLayout, ReadableTable,
+    ActionButton, AdaptiveDialog, ContentCombo, FlowLayout, MultilineInput, ReadableTable,
     install_visual_policy, scroll_page,
 )
 
@@ -536,6 +536,17 @@ def _etiqueta(texto: str, object_name: str) -> QLabel:
     return etiqueta
 
 
+def _campo_filtro(titulo: str, campo: QWidget) -> QWidget:
+    """Etiqueta y control son una unidad: nunca quedan en líneas diferentes."""
+    contenedor = QWidget()
+    layout = QVBoxLayout(contenedor)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(8)
+    layout.addWidget(_etiqueta(titulo, "CardSub"))
+    layout.addWidget(campo)
+    return contenedor
+
+
 def _fila(espacio: int = 10) -> QHBoxLayout:
     """Fila horizontal con separación uniforme entre controles."""
     fila = FlowLayout()
@@ -871,7 +882,7 @@ class MainWindow(QMainWindow):
         fila_filtros = FlowLayout()
         fila_filtros.setSpacing(10)
         self.txt_buscar_orden = QLineEdit()
-        self.txt_buscar_orden.setPlaceholderText("Buscar cliente, equipo o falla [ENTER]")
+        self.txt_buscar_orden.setPlaceholderText("Buscar cliente, equipo o falla")
         self.txt_buscar_orden.setMinimumWidth(260)
         self.txt_buscar_orden.textChanged.connect(self.refrescar_ordenes)
 
@@ -885,12 +896,9 @@ class MainWindow(QMainWindow):
         self.cmb_filtro_cat.addItems(["Todas"] + CATEGORIAS_EQUIPO)
         self.cmb_filtro_cat.currentTextChanged.connect(self.refrescar_ordenes)
 
-        fila_filtros.addWidget(QLabel("Filtrar:"))
-        fila_filtros.addWidget(self.txt_buscar_orden, 1)
-        fila_filtros.addWidget(QLabel("Estatus:"))
-        fila_filtros.addWidget(self.cmb_filtro_estatus)
-        fila_filtros.addWidget(QLabel("Categoría:"))
-        fila_filtros.addWidget(self.cmb_filtro_cat)
+        fila_filtros.addWidget(_campo_filtro("Buscar órdenes", self.txt_buscar_orden), 1)
+        fila_filtros.addWidget(_campo_filtro("Estado", self.cmb_filtro_estatus))
+        fila_filtros.addWidget(_campo_filtro("Categoría", self.cmb_filtro_cat))
         fc_lay.addLayout(fila_filtros)
 
         self.lbl_contador_ordenes = QLabel("Cantidad: 0 Órdenes")
@@ -942,18 +950,14 @@ class MainWindow(QMainWindow):
         self.lbl_folio_sel = QLabel("Selecciona una orden")
         self.lbl_folio_sel.setObjectName("FolioBadge")
         self.lbl_folio_sel.setMinimumWidth(220)
-        f1.addWidget(self.lbl_folio_sel)
-
-        f1.addWidget(QLabel("Estado:"))
+        pa_lay.addWidget(self.lbl_folio_sel)
         self.cmb_orden_estatus = ContentCombo()
         self.cmb_orden_estatus.setMinimumWidth(160)
         self.cmb_orden_estatus.addItems(ESTATUS_ORDEN)
-        f1.addWidget(self.cmb_orden_estatus)
-
-        f1.addWidget(QLabel("Ubicación:"))
+        f1.addWidget(_campo_filtro("Estado", self.cmb_orden_estatus))
         self.cmb_orden_ubicacion = ContentCombo()
         self.cmb_orden_ubicacion.setMinimumWidth(155)
-        f1.addWidget(self.cmb_orden_ubicacion)
+        f1.addWidget(_campo_filtro("Ubicación", self.cmb_orden_ubicacion))
 
         f1.addStretch()
 
@@ -970,18 +974,16 @@ class MainWindow(QMainWindow):
 
         f2 = FlowLayout()
         f2.setSpacing(8)
-        f2.addWidget(QLabel("Abono:"))
         self.spn_orden_abono = QDoubleSpinBox()
         self.spn_orden_abono.setRange(0, 999999)
         self.spn_orden_abono.setDecimals(2)
         self.spn_orden_abono.setMinimumWidth(115)
-        f2.addWidget(self.spn_orden_abono)
+        f2.addWidget(_campo_filtro("Abono", self.spn_orden_abono))
 
-        f2.addWidget(QLabel("Método:"))
         self.cmb_orden_mpago = ContentCombo()
         self.cmb_orden_mpago.setMinimumWidth(130)
         self.cmb_orden_mpago.addItems(METODOS_PAGO)
-        f2.addWidget(self.cmb_orden_mpago)
+        f2.addWidget(_campo_filtro("Método de pago", self.cmb_orden_mpago))
 
         btn_abonar = self._boton("Registrar Abono", "zap", jerarquia="principal", tooltip="Registrar un abono en la orden")
         btn_abonar.setMinimumWidth(145)
@@ -1047,7 +1049,7 @@ class MainWindow(QMainWindow):
         self.no_marca.setInsertPolicy(QComboBox.NoInsert)
 
         self.no_modelo = QLineEdit()
-        self.no_modelo.setPlaceholderText("Ej. PlayStation 4 Slim, Xbox Series S, Galaxy A54")
+        self.no_modelo.setPlaceholderText("Modelo o versión del equipo")
         self.no_color = QLineEdit()
         self.no_color.setPlaceholderText("Ej. Negro, Blanco")
 
@@ -1092,7 +1094,7 @@ class MainWindow(QMainWindow):
         self.no_servicio_cat = ContentCombo()
         self.no_servicio_cat.currentIndexChanged.connect(self._aplicar_servicio_catalogo)
 
-        self.no_falla = QLineEdit()
+        self.no_falla = MultilineInput()
         self.no_falla.setPlaceholderText("Falla o servicio solicitado")
 
         self.no_ubicacion = ContentCombo()
@@ -1129,6 +1131,13 @@ class MainWindow(QMainWindow):
             contenido.addLayout(formulario)
             lay.addWidget(tarjeta)
             return formulario
+
+        datos_card, datos_layout = _tarjeta("Datos de la orden", "Folio automático · nueva recepción")
+        datos_fila = FlowLayout()
+        datos_fila.addWidget(_etiqueta("Estado inicial: Recibido", "FolioBadge"))
+        datos_fila.addWidget(_etiqueta("Ingreso: " + datetime.now().strftime("%d/%m/%Y"), "CardSub"))
+        datos_layout.addLayout(datos_fila)
+        lay.addWidget(datos_card)
 
         form = seccion("01 · Cliente", "Datos de contacto para el seguimiento de la reparación")
         form.addRow("Cliente *:", self.no_cliente)
@@ -1452,7 +1461,7 @@ class MainWindow(QMainWindow):
         txt_patron = QLineEdit(o.get("patron", "Sin patrón"))
         txt_patron.setPlaceholderText("Ej. 1 -> 2 -> 3 (o Sin patrón)")
         txt_estado = QLineEdit(o.get("estado_fisico", ""))
-        txt_falla = QLineEdit(o.get("falla", ""))
+        txt_falla = MultilineInput(o.get("falla", ""))
         cmb_ubic = ContentCombo()
         for u in self.service.listar_ubicaciones(solo_activas=True):
             cmb_ubic.addItem(u["nombre"])
@@ -1796,7 +1805,7 @@ class MainWindow(QMainWindow):
         self.s_modelo = QLineEdit()
         self.s_modelo.setPlaceholderText("Modelo")
         self.s_nombre = QLineEdit()
-        self.s_nombre.setPlaceholderText("Servicio (ej. Cambio de pantalla / Limpieza)")
+        self.s_nombre.setPlaceholderText("Nombre del servicio")
         self.s_precio = QDoubleSpinBox()
         self.s_precio.setRange(0, 999999)
         self.s_precio.setDecimals(2)
@@ -1804,8 +1813,11 @@ class MainWindow(QMainWindow):
         btn_add_s = self._boton("Agregar servicio", "mas", jerarquia="principal", object_name="PrimaryBtn", tooltip="Agregar un servicio al catálogo")
         btn_add_s.setMinimumWidth(150)
         btn_add_s.clicked.connect(self._agregar_servicio)
-        for widget in (self.s_cat, self.s_marca, self.s_modelo, self.s_nombre, self.s_precio, btn_add_s):
-            row_s.addWidget(widget)
+        for titulo, widget in (("Categoría", self.s_cat), ("Marca", self.s_marca),
+                               ("Modelo", self.s_modelo), ("Servicio", self.s_nombre),
+                               ("Precio", self.s_precio)):
+            row_s.addWidget(_campo_filtro(titulo, widget))
+        row_s.addWidget(btn_add_s)
         l_serv.addLayout(row_s)
 
         self.tbl_servicios = ReadableTable(0, 6)
@@ -1829,8 +1841,10 @@ class MainWindow(QMainWindow):
         btn_add_u = self._boton("Agregar ubicación", "mas", jerarquia="principal", object_name="PrimaryBtn", tooltip="Agregar una ubicación")
         btn_add_u.setMinimumWidth(160)
         btn_add_u.clicked.connect(self._agregar_ubicacion)
-        for widget in (self.u_nombre, self.u_tipo, self.u_desc, btn_add_u):
-            row_u.addWidget(widget)
+        for titulo, widget in (("Ubicación", self.u_nombre), ("Tipo", self.u_tipo),
+                               ("Descripción", self.u_desc)):
+            row_u.addWidget(_campo_filtro(titulo, widget), 1)
+        row_u.addWidget(btn_add_u)
         l_ub.addLayout(row_u)
 
         self.tbl_ubicaciones = ReadableTable(0, 5)
@@ -2194,7 +2208,7 @@ class MainWindow(QMainWindow):
         lay.setContentsMargins(26, 20, 26, 20)
         lay.setSpacing(14)
 
-        head_row = FlowLayout()
+        head_row = QVBoxLayout()
         title_box = QVBoxLayout()
         title_box.setSpacing(2)
         lbl_t = QLabel("Inventario de Productos y Refacciones")
@@ -2214,10 +2228,11 @@ class MainWindow(QMainWindow):
         btn_nuevo_prod.clicked.connect(self._agregar_producto_inventario)
 
         head_row.addLayout(title_box)
-        head_row.addStretch()
-        head_row.addWidget(self.lbl_inv_candado)
-        head_row.addWidget(self.btn_inv_candado)
-        head_row.addWidget(btn_nuevo_prod)
+        acciones = FlowLayout()
+        acciones.addWidget(self.lbl_inv_candado)
+        acciones.addWidget(self.btn_inv_candado)
+        acciones.addWidget(btn_nuevo_prod)
+        head_row.addLayout(acciones)
         lay.addLayout(head_row)
 
         cards_row = FlowLayout()
@@ -2264,11 +2279,9 @@ class MainWindow(QMainWindow):
         self.cmb_inv_stock.addItems(["Todos", "Disponible", "Stock bajo", "Agotado"])
         self.cmb_inv_stock.currentTextChanged.connect(self.refrescar_inventario)
 
-        filtros_row.addWidget(self.txt_buscar_inv, 1)
-        filtros_row.addWidget(QLabel("Categoría:"))
-        filtros_row.addWidget(self.cmb_inv_cat)
-        filtros_row.addWidget(QLabel("Existencia:"))
-        filtros_row.addWidget(self.cmb_inv_stock)
+        filtros_row.addWidget(_campo_filtro("Buscar productos", self.txt_buscar_inv), 1)
+        filtros_row.addWidget(_campo_filtro("Categoría", self.cmb_inv_cat))
+        filtros_row.addWidget(_campo_filtro("Existencia", self.cmb_inv_stock))
         tc_lay.addLayout(filtros_row)
 
         self.tbl_inventario = ReadableTable(0, 9)
@@ -2484,10 +2497,10 @@ class MainWindow(QMainWindow):
         form.setSpacing(8)
 
         txt_codigo = QLineEdit((actual or {}).get("codigo", ""))
-        txt_codigo.setPlaceholderText("Ej. PAN-IP11, BAT-A54, CAB-TC (opcional)")
+        txt_codigo.setPlaceholderText("Código o SKU (opcional)")
 
         txt_nombre = QLineEdit((actual or {}).get("nombre", ""))
-        txt_nombre.setPlaceholderText("Ej. Pantalla iPhone 11 Incell / Cable Tipo C")
+        txt_nombre.setPlaceholderText("Nombre del producto o refacción")
 
         cmb_cat = ContentCombo()
         cmb_cat.setEditable(True)
@@ -2498,7 +2511,7 @@ class MainWindow(QMainWindow):
             cmb_cat.setCurrentText(cat_ini)
 
         txt_mm = QLineEdit((actual or {}).get("marca_modelo", ""))
-        txt_mm.setPlaceholderText("Ej. Apple iPhone 11 / Samsung A54 / Universal")
+        txt_mm.setPlaceholderText("Marca y modelo compatible")
 
         spn_stock = QSpinBox()
         spn_stock.setRange(0, 999999)
@@ -2857,7 +2870,7 @@ class MainWindow(QMainWindow):
         self.cmb_filtro_malware.currentTextChanged.connect(self._refrescar_tabla_malware)
 
         self.txt_buscar_malware = QLineEdit()
-        self.txt_buscar_malware.setPlaceholderText("Filtrar paquete (ej. clean, boost, flash)...")
+        self.txt_buscar_malware.setPlaceholderText("Filtrar paquete Android")
         self.txt_buscar_malware.textChanged.connect(self._refrescar_tabla_malware)
 
         top_bar.addWidget(btn_escanear)

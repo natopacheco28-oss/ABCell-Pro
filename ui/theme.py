@@ -3,6 +3,7 @@
 QSS compartido por QApplication, incluidas las ventanas secundarias. Las
 medidas son lógicas (HiDPI). Los tamaños de contenido se calculan en layouts.py.
 """
+from pathlib import Path
 from typing import Dict, List, Optional
 
 TEMA_POR_DEFECTO = "Lima Pro"
@@ -90,7 +91,9 @@ QLineEdit:disabled, QComboBox:disabled { color: #93a2b5; background: #202b39; }
 QComboBox { padding-right: 36px; }
 QComboBox:focus { padding-right: 35px; }
 QComboBox::drop-down { width: 30px; border: none; background: transparent; }
-QComboBox::down-arrow { image: none; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid %(accent)s; }
+QComboBox::down-arrow { image: url("%(arrow)s"); width: 16px; height: 16px; }
+QComboBox QLineEdit, QComboBox QLineEdit:focus,
+QAbstractSpinBox QLineEdit, QAbstractSpinBox QLineEdit:focus { border: none; padding: 0; min-height: 0; background: transparent; }
 QComboBox QAbstractItemView { background: %(card_bg)s; color: %(input_fg)s; border: 1px solid %(input_border)s; padding: 6px; selection-background-color: %(sel_bg)s; selection-color: %(sel_fg)s; }
 QComboBox QAbstractItemView::item { padding: 10px; min-height: 24px; }
 QSpinBox::up-button, QDoubleSpinBox::up-button { width: 24px; border: none; }
@@ -133,7 +136,8 @@ def nombre_tema(tema: str) -> str:
 
 
 def construir_qss(tema: str) -> str:
-    return _QSS % PALETAS_TEMAS[nombre_tema(tema)]
+    return _QSS % {**PALETAS_TEMAS[nombre_tema(tema)],
+                   "arrow": (Path(__file__).parent / "assets" / "chevron-down.svg").as_posix()}
 
 
 def es_tema_oscuro(tema: str) -> bool:

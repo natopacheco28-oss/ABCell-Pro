@@ -65,7 +65,9 @@ def audit(output):
                 failures.append(f"{section} / {name} [{resolution}]: "
                                 f"actual={actual.width()}x{actual.height()}, "
                                 f"contenido={expected.width()}x{expected.height()}, "
-                                f"dentro_del_padre={contained}")
+                                f"dentro_del_padre={contained}; "
+                                f"geometría={button.geometry().getRect()}, "
+                                f"padre={type(parent).__name__}:{parent.rect().getRect() if parent else None}")
         if screenshot:
             filename = f"{len(screenshots):02d}-{section.replace('/', '-').replace(' ', '_')}.png"
             root.grab().save(str(output / filename))
@@ -130,6 +132,10 @@ def audit(output):
                 window._dialogo_producto_inventario()
                 window._dialogo_producto_inventario(service.obtener_producto_inventario(product_id))
                 window._mostrar_dialogo_imagen_ticket(service.obtener_orden(folio), image_path)
+                with patch.object(window, "_serial_adb_listo", return_value="equipo-simulado"), patch.object(
+                    window.adb, "capturar_pantalla", return_value=(True, "Captura simulada sin dispositivo")
+                ):
+                    window._capturar_pantalla_adb()
                 with patch.object(window, "_autorizar_con_codigo", return_value=True):
                     window._abrir_modo_maestro()
 

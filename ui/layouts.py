@@ -6,7 +6,7 @@ from PySide6.QtGui import QColor, QPalette
 from PySide6.QtCore import QEvent, QObject, QRect, QSize, Qt, QTimer
 from PySide6.QtWidgets import (
     QAbstractSpinBox, QApplication, QComboBox, QFormLayout, QLabel, QLayout,
-    QDialog, QHeaderView, QLineEdit, QPushButton, QScrollArea, QSizePolicy, QSpacerItem, QStyle, QVBoxLayout,
+    QDialog, QHeaderView, QLineEdit, QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy, QSpacerItem, QStyle, QVBoxLayout,
     QStyleOptionButton, QTableWidget, QWidget, QWidgetItem,
 )
 
@@ -182,7 +182,7 @@ def scroll_page(widget):
 class VisualPolicy(QObject):
     """También protege los botones creados por Qt en mensajes y diálogos nativos Qt."""
     def eventFilter(self, obj, event):
-        if event.type() in (QEvent.Polish, QEvent.Show):
+        if event.type() in (QEvent.Polish, QEvent.Show, QEvent.FontChange, QEvent.StyleChange):
             if isinstance(obj, QPushButton):
                 obj.setMaximumHeight(16777215)
                 minimum = button_content_size(obj).expandedTo(obj.sizeHint())
@@ -246,7 +246,14 @@ class AdaptiveDialog(QDialog):
         inner.setContentsMargins(4, 4, 4, 4)
         inner.setSpacing(16)
         while original.count():
-            inner.addItem(original.takeAt(0))
+            item = original.takeAt(0)
+            if item.widget():
+                inner.addWidget(item.widget())
+            elif item.layout():
+                item.layout().setParent(None)
+                inner.addLayout(item.layout())
+            else:
+                inner.addItem(item)
         original.addWidget(scroll_page(content))
         screen = self.screen().availableGeometry()
         self.setMinimumHeight(0)
@@ -269,7 +276,12 @@ class ReadableTable(QTableWidget):
         self._fit_timer = QTimer(self)
         self._fit_timer.setSingleShot(True)
         self._fit_timer.timeout.connect(self.fit_contents)
-        self.horizontalHeader().sectionResized.connect(lambda *_: self._fit_timer.start(0))
+        self._fitting = False
+        self.horizontalHeader().sectionResized.connect(self._schedule_fit)
+
+    def _schedule_fit(self, *args):
+        if not self._fitting:
+            self._fit_timer.start(0)
 
     def setItem(self, row, column, item):
         item.setToolTip(item.text())
@@ -285,7 +297,7 @@ class ReadableTable(QTableWidget):
 
     def fit_contents(self):
         header = self.horizontalHeader()
-        header.blockSignals(True)
+        self._fitting = True
         header.setStretchLastSection(False)
         for column in range(self.columnCount()):
             title = self.horizontalHeaderItem(column)
@@ -300,7 +312,7 @@ class ReadableTable(QTableWidget):
                     if item:
                         width = max(width, min(360, self.fontMetrics().horizontalAdvance(item.text()) + 32))
             self.setColumnWidth(column, width)
-        header.blockSignals(False)
+        self.doItemsLayout()
         self.resizeRowsToContents()
         for row in range(self.rowCount()):
             height = max(60, self.rowHeight(row))
@@ -309,6 +321,8 @@ class ReadableTable(QTableWidget):
                 if widget:
                     height = max(height, widget.sizeHint().height() + 12)
             self.setRowHeight(row, height)
+        self.doItemsLayout()
+        self._fitting = False
 
 
 class ContentCombo(QComboBox):
@@ -328,3 +342,18 @@ class ContentCombo(QComboBox):
 
     def sizeHint(self):
         return self.minimumSizeHint()
+
+
+class MultilineInput(QPlainTextEdit):
+    """Descripción con ajuste de línea y API text/setText de los formularios."""
+    def __init__(self, text="", parent=None):
+        super().__init__(parent)
+        self.setPlainText(text)
+        self.setMinimumHeight(120)
+        self.setLineWrapMode(QPlainTextEdit.WidgetWidth)
+
+    def text(self):
+        return self.toPlainText()
+
+    def setText(self, text):
+        self.setPlainText(text)
