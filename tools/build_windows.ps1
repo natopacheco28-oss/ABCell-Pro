@@ -35,12 +35,8 @@ try {
 
 $buildAssets = Join-Path (Get-Location) ".cache\build-assets"
 New-Item -ItemType Directory -Force -Path $buildAssets | Out-Null
-$icon = Join-Path $buildAssets "logo.ico"
-if (Test-Path "logo.ico") {
-    Copy-Item "logo.ico" $icon -Force
-} else {
-    Invoke-Checked -Program $python -Arguments @("-c", "from PIL import Image, ImageDraw; import sys; im=Image.new('RGBA',(256,256),'#0c111b'); d=ImageDraw.Draw(im); d.rounded_rectangle((24,24,232,232),radius=40,fill='#c5f467'); im.save(sys.argv[1],sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])", $icon)
-}
+Invoke-Checked -Program $python -Arguments @("tools/prepare_icon.py")
+$icon = (Resolve-Path "ui\assets\abcell-pro.ico").Path
 
 $platformTools = Join-Path $buildAssets "platform_tools"
 New-Item -ItemType Directory -Force -Path $platformTools | Out-Null
@@ -72,7 +68,7 @@ foreach ($file in @("adb.exe", "AdbWinApi.dll", "AdbWinUsbApi.dll")) {
 }
 
 $arguments = @("-m", "PyInstaller", "--noconfirm", "--clean", "--onefile", "--noconsole",
-               "--icon", $icon, "--name", "ABCell_Gestion_Taller")
+               "--icon", $icon, "--version-file", "config/windows_version_info.txt", "--name", "ABCell Pro")
 foreach ($module in @("config.settings", "config.assets", "core.catalog_data", "database.db_manager",
                       "services.workshop_service", "integrations.adb_manager", "integrations.printer_58mm",
                       "integrations.ticket_image", "integrations.whatsapp_center", "ui.theme", "ui.icons",
@@ -84,5 +80,5 @@ foreach ($folder in @("config", "core", "database", "services", "integrations", 
 }
 $arguments += @("--add-data", "$platformTools;platform_tools", "main.py")
 Invoke-Checked -Program $python -Arguments $arguments
-Write-Host "Compilación terminada: dist\ABCell_Gestion_Taller.exe"
+Write-Host "Compilación terminada: dist\ABCell Pro.exe"
 Write-Host "Verificación de botones: artifacts\ui\BUTTON_CHECKLIST.md"

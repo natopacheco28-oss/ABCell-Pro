@@ -2,6 +2,9 @@ import os
 import shutil
 import sys
 from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QIcon
+
+from config.branding import APP_ID, APP_NAME, app_icon_path
 
 from config.settings import ConfigManager
 from ui.main_window import MainWindow
@@ -58,8 +61,15 @@ def obtener_carpeta_datos() -> str:
 
 
 def main():
+    if sys.platform == "win32":
+        # Agrupar barra de tareas bajo la marca nueva, no bajo python.exe.
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
     app = QApplication(sys.argv)
-    app.setApplicationName("ABCell Gestion Taller")
+    app.setApplicationName(APP_NAME)
+    app.setApplicationDisplayName(APP_NAME)
+    app.setOrganizationName("ABCell")
+    app.setWindowIcon(QIcon(str(app_icon_path())))
 
     carpeta_datos = obtener_carpeta_datos()
     config = ConfigManager(os.path.join(carpeta_datos, "config.json"))

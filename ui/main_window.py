@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSpinBox,
     QStackedWidget,
     QTableWidget,
@@ -45,6 +46,7 @@ from ui.layouts import (
     install_visual_policy, scroll_page,
 )
 
+from config.branding import APP_NAME, app_icon_path, app_logo_path
 from config.settings import ConfigManager
 from database.db_manager import DatabaseManager
 from integrations.printer_58mm import (
@@ -503,7 +505,7 @@ def _configurar_tabla(tabla: QTableWidget, stretch_col: int = -1):
     tabla.setSelectionBehavior(QTableWidget.SelectRows)
     tabla.setEditTriggers(QTableWidget.NoEditTriggers)
     tabla.verticalHeader().setVisible(False)
-    tabla.verticalHeader().setDefaultSectionSize(64)
+    tabla.verticalHeader().setDefaultSectionSize(40)
     tabla.setShowGrid(False)
     header = tabla.horizontalHeader()
     header.setSectionResizeMode(QHeaderView.Interactive)
@@ -512,7 +514,7 @@ def _configurar_tabla(tabla: QTableWidget, stretch_col: int = -1):
         header.setSectionResizeMode(stretch_col, QHeaderView.Interactive)
 
 
-def _tarjeta(titulo: str = "", subtitulo: str = "", margenes=(18, 16, 18, 16)) -> tuple:
+def _tarjeta(titulo: str = "", subtitulo: str = "", margenes=(12, 10, 12, 10)) -> tuple:
     """Crea una tarjeta con borde finito, esquinas redondeadas y un título.
 
     Devuelve ``(frame, layout)`` para agregar contenido con relleno amplio.
@@ -522,7 +524,7 @@ def _tarjeta(titulo: str = "", subtitulo: str = "", margenes=(18, 16, 18, 16)) -
     lay = QVBoxLayout(card)
     margen_l, margen_t, margen_r, margen_b = margenes
     lay.setContentsMargins(margen_l, margen_t, margen_r, margen_b)
-    lay.setSpacing(12)
+    lay.setSpacing(8)
     if titulo:
         lay.addWidget(_etiqueta(titulo, "CardTitle"))
     if subtitulo:
@@ -585,10 +587,12 @@ class MainWindow(QMainWindow):
         self.atajo_modo_maestro.activated.connect(self._abrir_modo_maestro)
 
         nombre_negocio = self.config.get("identidad", "nombre_establecimiento", "ABCell")
-        self.setWindowTitle(f"{nombre_negocio} — Taller")
-        self.resize(1440, 900)
+        self.setWindowTitle(f"{APP_NAME} — {nombre_negocio} — Taller")
+        self.resize(1280, 760)
         self.setMinimumSize(900, 600)
         install_visual_policy(QApplication.instance())
+        # Aplicar la fuente antes de medir mínimos (importante en Windows/HiDPI).
+        QApplication.instance().setStyleSheet(self._gestor_temas().qss())
 
         self._build_ui()
         self._aplicar_icono_abcell()
@@ -596,6 +600,9 @@ class MainWindow(QMainWindow):
         self.refrescar_todo()
 
     def _obtener_pixmap_abcell(self) -> QPixmap | None:
+        marca = QPixmap(str(app_logo_path()))
+        if not marca.isNull():
+            return marca
         pil_img = logo_color_pil(self.config) or logo_pil(self.config)
         if pil_img is not None:
             tmp_path = os.path.join(
@@ -617,9 +624,8 @@ class MainWindow(QMainWindow):
         return None
 
     def _aplicar_icono_abcell(self):
-        pm = self._obtener_pixmap_abcell()
-        if pm is not None and not pm.isNull():
-            self.setWindowIcon(QIcon(pm))
+        # La marca del programa no depende del logo personalizado de los tickets.
+        self.setWindowIcon(QIcon(str(app_icon_path())))
 
     # --- Gestor de temas (centralizado en ui.theme) ---
     def _gestor_temas(self) -> GestorTemas:
@@ -668,7 +674,7 @@ class MainWindow(QMainWindow):
         jerarquia: str = "secundario",
         object_name: str = "",
         tooltip: str = "",
-        icon_size: int = 18,
+        icon_size: int = 16,
     ) -> QPushButton:
         """Crea un botón moderno con icono vectorial a la izquierda + texto.
 
@@ -740,22 +746,21 @@ class MainWindow(QMainWindow):
 
         sidebar = QFrame()
         sidebar.setObjectName("Sidebar")
-        sidebar.setMinimumWidth(276)
+        sidebar.setMinimumWidth(228)
+        sidebar.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Expanding)
         self.sidebar = sidebar
         sb_lay = QVBoxLayout(sidebar)
-        sb_lay.setContentsMargins(16, 24, 16, 20)
-        sb_lay.setSpacing(8)
+        sb_lay.setContentsMargins(12, 16, 12, 12)
+        sb_lay.setSpacing(6)
 
         brand_row = FlowLayout()
-        brand_row.setSpacing(12)
+        brand_row.setSpacing(8)
         self.lbl_logo_sidebar = QLabel()
         self.lbl_logo_sidebar.setFixedSize(44, 44)
         self.lbl_logo_sidebar.setAlignment(Qt.AlignCenter)
         self._cargar_logo_widget(self.lbl_logo_sidebar, 42)
 
-        self.lbl_brand_sidebar = QLabel(
-            self.config.get("identidad", "nombre_establecimiento", "ABCell")
-        )
+        self.lbl_brand_sidebar = QLabel(APP_NAME)
         self.lbl_brand_sidebar.setObjectName("BrandTitle")
         self.lbl_brand_sidebar.setWordWrap(True)
         brand_row.addWidget(self.lbl_logo_sidebar)
@@ -779,7 +784,7 @@ class MainWindow(QMainWindow):
         ]
         for texto, icono_nombre, idx in secciones:
             btn = self._boton(texto, icono_nombre, jerarquia="secundario", object_name="NavBtn")
-            btn.setMinimumHeight(48)
+            btn.setMinimumHeight(38)
             btn.clicked.connect(lambda checked=False, i=idx: self.ir_a_seccion(i))
             sb_lay.addWidget(btn)
             self.nav_buttons.append(btn)
@@ -850,8 +855,8 @@ class MainWindow(QMainWindow):
     def _build_taller_ordenes_tab(self) -> QWidget:
         w = QWidget()
         lay = QVBoxLayout(w)
-        lay.setContentsMargins(26, 20, 26, 20)
-        lay.setSpacing(14)
+        lay.setContentsMargins(18, 14, 18, 14)
+        lay.setSpacing(10)
 
         stage_bar = FlowLayout()
         stage_bar.setSpacing(8)
@@ -875,14 +880,14 @@ class MainWindow(QMainWindow):
         filtr_card = QFrame()
         filtr_card.setObjectName("Card")
         fc_lay = QVBoxLayout(filtr_card)
-        fc_lay.setContentsMargins(20, 18, 20, 18)
+        fc_lay.setContentsMargins(12, 10, 12, 10)
         fc_lay.setSpacing(10)
 
         fila_filtros = FlowLayout()
         fila_filtros.setSpacing(10)
         self.txt_buscar_orden = QLineEdit()
         self.txt_buscar_orden.setPlaceholderText("Buscar cliente, equipo o falla")
-        self.txt_buscar_orden.setMinimumWidth(260)
+        self.txt_buscar_orden.setMinimumWidth(200)
         self.txt_buscar_orden.textChanged.connect(self.refrescar_ordenes)
 
         self.cmb_filtro_estatus = ContentCombo()
@@ -908,7 +913,7 @@ class MainWindow(QMainWindow):
         tbl_card = QFrame()
         tbl_card.setObjectName("Card")
         tc_lay = QVBoxLayout(tbl_card)
-        tc_lay.setContentsMargins(20, 18, 20, 18)
+        tc_lay.setContentsMargins(12, 10, 12, 10)
         tc_lay.setSpacing(10)
 
         t_head = FlowLayout()
@@ -941,8 +946,8 @@ class MainWindow(QMainWindow):
         panel_accion = QFrame()
         panel_accion.setObjectName("SubBar")
         pa_lay = QVBoxLayout(panel_accion)
-        pa_lay.setContentsMargins(20, 14, 20, 14)
-        pa_lay.setSpacing(12)
+        pa_lay.setContentsMargins(12, 10, 12, 10)
+        pa_lay.setSpacing(8)
 
         f1 = FlowLayout()
         f1.setSpacing(8)
@@ -1027,8 +1032,8 @@ class MainWindow(QMainWindow):
         scroll.setFrameShape(QFrame.NoFrame)
         w = QWidget()
         lay = QVBoxLayout(w)
-        lay.setContentsMargins(26, 20, 26, 20)
-        lay.setSpacing(14)
+        lay.setContentsMargins(18, 14, 18, 14)
+        lay.setSpacing(10)
 
         lbl = QLabel("Registrar Nueva Orden de Trabajo")
         lbl.setObjectName("Title")
@@ -1061,7 +1066,7 @@ class MainWindow(QMainWindow):
         patron_box.setObjectName("SubBar")
         pb_lay = FlowLayout(patron_box)
         pb_lay.setContentsMargins(12, 10, 12, 10)
-        pb_lay.setSpacing(14)
+        pb_lay.setSpacing(10)
 
         self.patron_canvas = PatronCanvasWidget()
         self.patron_canvas.patron_cambiado.connect(self._on_patron_dibujado)
@@ -1119,14 +1124,14 @@ class MainWindow(QMainWindow):
         self.lbl_no_saldo.setObjectName("MetricValue")
 
         self.no_notas = QPlainTextEdit()
-        self.no_notas.setMinimumHeight(120)
+        self.no_notas.setMinimumHeight(80)
 
         def seccion(titulo, ayuda):
             tarjeta, contenido = _tarjeta(titulo, ayuda)
             formulario = QFormLayout()
             formulario.setRowWrapPolicy(QFormLayout.WrapLongRows)
             formulario.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
-            formulario.setSpacing(14)
+            formulario.setSpacing(10)
             contenido.addLayout(formulario)
             lay.addWidget(tarjeta)
             return formulario
@@ -1164,7 +1169,7 @@ class MainWindow(QMainWindow):
         form.addRow("Notas internas:", self.no_notas)
 
         btns = FlowLayout()
-        btns.setSpacing(12)
+        btns.setSpacing(8)
         btn_guardar = self._boton("Guardar Orden", "guardar", jerarquia="principal", tooltip="Guardar la nueva orden")
         btn_guardar.setMinimumWidth(145)
         btn_guardar.clicked.connect(self._guardar_nueva_orden)
@@ -1440,7 +1445,7 @@ class MainWindow(QMainWindow):
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setMinimumHeight(480)
+        scroll.setMinimumHeight(300)
         form_w = QWidget()
         form = QFormLayout(form_w)
         form.setSpacing(8)
@@ -1479,7 +1484,7 @@ class MainWindow(QMainWindow):
         spn_total.setDecimals(2)
         spn_total.setValue(float(o.get("costo_total") or 0.0))
         txt_notas = QPlainTextEdit(o.get("notas_internas", ""))
-        txt_notas.setMinimumHeight(120)
+        txt_notas.setMinimumHeight(80)
 
         def _cargar_marcas(categoria: str):
             opciones = SUBCATEGORIAS_POR_CATEGORIA.get(categoria, ["Otra marca"])
@@ -1663,7 +1668,7 @@ class MainWindow(QMainWindow):
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setMinimumHeight(420)
+        scroll.setMinimumHeight(280)
         lbl_img = QLabel()
         lbl_img.setAlignment(Qt.AlignCenter)
         pm = QPixmap(ruta)
@@ -1783,8 +1788,8 @@ class MainWindow(QMainWindow):
     def _build_catalogo_ubicaciones_tab(self) -> QWidget:
         w = QWidget()
         lay = QVBoxLayout(w)
-        lay.setContentsMargins(26, 20, 26, 20)
-        lay.setSpacing(14)
+        lay.setContentsMargins(18, 14, 18, 14)
+        lay.setSpacing(10)
 
         lbl = QLabel("Catálogo de Servicios y Ubicaciones")
         lbl.setObjectName("Title")
@@ -1805,6 +1810,7 @@ class MainWindow(QMainWindow):
         self.s_modelo.setPlaceholderText("Modelo")
         self.s_nombre = QLineEdit()
         self.s_nombre.setPlaceholderText("Nombre del servicio")
+        self.s_nombre.setMinimumWidth(160)
         self.s_precio = QDoubleSpinBox()
         self.s_precio.setRange(0, 999999)
         self.s_precio.setDecimals(2)
@@ -2146,15 +2152,15 @@ class MainWindow(QMainWindow):
     def _build_reportes_tab(self) -> QWidget:
         w = QWidget()
         lay = QVBoxLayout(w)
-        lay.setContentsMargins(26, 20, 26, 20)
-        lay.setSpacing(14)
+        lay.setContentsMargins(18, 14, 18, 14)
+        lay.setSpacing(10)
 
         lbl = QLabel("Estadísticas y Reportes Financieros")
         lbl.setObjectName("Title")
         lay.addWidget(lbl)
 
         row = FlowLayout()
-        row.setSpacing(12)
+        row.setSpacing(8)
         c_dia, self.r_dia, _ = _make_metric_card("Ingresos del Día", "$0.00", "Abonos y cobros hoy")
         c_mes, self.r_mes, _ = _make_metric_card("Ingresos del Mes", "$0.00", "Flujo mensual")
         c_gan, self.r_gan, _ = _make_metric_card(
@@ -2204,8 +2210,8 @@ class MainWindow(QMainWindow):
     def _build_inventario_tab(self) -> QWidget:
         w = QWidget()
         lay = QVBoxLayout(w)
-        lay.setContentsMargins(26, 20, 26, 20)
-        lay.setSpacing(14)
+        lay.setContentsMargins(18, 14, 18, 14)
+        lay.setSpacing(10)
 
         head_row = QVBoxLayout()
         title_box = QVBoxLayout()
@@ -2218,12 +2224,12 @@ class MainWindow(QMainWindow):
         self.lbl_inv_candado.setObjectName("CardSub")
 
         self.btn_inv_candado = self._boton("Desbloquear edición", "ojo", jerarquia="secundario", tooltip="Iniciar sesión de edición (se pide el código maestro una vez)")
-        self.btn_inv_candado.setMinimumHeight(44)
+        self.btn_inv_candado.setMinimumHeight(32)
         self.btn_inv_candado.clicked.connect(self._alternar_candado_inventario)
 
         btn_nuevo_prod = self._boton("Agregar producto", "mas", jerarquia="principal", object_name="PrimaryBtn", tooltip="Agregar un producto o refacción")
         btn_nuevo_prod.setMinimumWidth(165)
-        btn_nuevo_prod.setMinimumHeight(44)
+        btn_nuevo_prod.setMinimumHeight(32)
         btn_nuevo_prod.clicked.connect(self._agregar_producto_inventario)
 
         head_row.addLayout(title_box)
@@ -2235,7 +2241,7 @@ class MainWindow(QMainWindow):
         lay.addLayout(head_row)
 
         cards_row = FlowLayout()
-        cards_row.setSpacing(12)
+        cards_row.setSpacing(8)
         c_prod, self.lbl_inv_total, self.lbl_inv_unidades = _make_metric_card(
             "Productos registrados", "0", "0 unidades disponibles"
         )
@@ -2265,7 +2271,7 @@ class MainWindow(QMainWindow):
         self.txt_buscar_inv.setPlaceholderText(
             "Buscar por código, producto, marca/modelo o ubicación..."
         )
-        self.txt_buscar_inv.setMinimumWidth(280)
+        self.txt_buscar_inv.setMinimumWidth(220)
         self.txt_buscar_inv.textChanged.connect(self.refrescar_inventario)
 
         self.cmb_inv_cat = ContentCombo()
@@ -2376,13 +2382,13 @@ class MainWindow(QMainWindow):
         lay.setSpacing(4)
 
         btn_menos = self._boton_icono("menos", "IconBtn", "Restar 1 al stock", 16)
-        btn_menos.setMinimumWidth(44)
+        btn_menos.setMinimumWidth(32)
         btn_menos.clicked.connect(
             lambda _=False, pid=producto_id: self._ajustar_stock_rapido(pid, -1)
         )
 
         btn_mas = self._boton_icono("mas", "IconBtn", "Sumar 1 al stock", 16)
-        btn_mas.setMinimumWidth(44)
+        btn_mas.setMinimumWidth(32)
         btn_mas.clicked.connect(
             lambda _=False, pid=producto_id: self._ajustar_stock_rapido(pid, 1)
         )
@@ -2670,8 +2676,8 @@ class MainWindow(QMainWindow):
     def _build_utilidades_android_tab(self) -> QWidget:
         w = QWidget()
         lay = QVBoxLayout(w)
-        lay.setContentsMargins(26, 20, 26, 20)
-        lay.setSpacing(14)
+        lay.setContentsMargins(18, 14, 18, 14)
+        lay.setSpacing(10)
 
         head_row = FlowLayout()
         title_box = QVBoxLayout()
@@ -2693,7 +2699,7 @@ class MainWindow(QMainWindow):
         conn_fila.addWidget(self.lbl_adb_motor)
 
         self.cmb_adb_dispositivos = ContentCombo()
-        self.cmb_adb_dispositivos.setMinimumWidth(360)
+        self.cmb_adb_dispositivos.setMinimumWidth(220)
         self.cmb_adb_dispositivos.addItem(
             "Selecciona un equipo detectado", None
         )
@@ -2735,7 +2741,7 @@ class MainWindow(QMainWindow):
 
         self.txt_adb_log = QPlainTextEdit()
         self.txt_adb_log.setReadOnly(True)
-        self.txt_adb_log.setMinimumHeight(150)
+        self.txt_adb_log.setMinimumHeight(100)
         self.txt_adb_log.setPlaceholderText(
             "Aquí se mostrarán los resultados de diagnóstico, desinstalaciones y cambios de DNS..."
         )
@@ -2749,15 +2755,15 @@ class MainWindow(QMainWindow):
     def _build_subtab_diagnostico_adb(self) -> QWidget:
         p = QWidget()
         lay = QVBoxLayout(p)
-        lay.setContentsMargins(18, 16, 18, 16)
-        lay.setSpacing(14)
+        lay.setContentsMargins(12, 10, 12, 10)
+        lay.setSpacing(10)
 
         # --- Bloque: acciones de diagnóstico ---
         diag_card = QFrame()
         diag_card.setObjectName("Card")
         d_lay = QVBoxLayout(diag_card)
-        d_lay.setContentsMargins(18, 16, 18, 16)
-        d_lay.setSpacing(12)
+        d_lay.setContentsMargins(12, 10, 12, 10)
+        d_lay.setSpacing(8)
         lbl_diag_t = QLabel("Diagnóstico")
         lbl_diag_t.setObjectName("CardTitle")
         d_lay.addWidget(lbl_diag_t)
@@ -2790,8 +2796,8 @@ class MainWindow(QMainWindow):
         reboot_card = QFrame()
         reboot_card.setObjectName("Card")
         r_lay = QVBoxLayout(reboot_card)
-        r_lay.setContentsMargins(18, 16, 18, 16)
-        r_lay.setSpacing(12)
+        r_lay.setContentsMargins(12, 10, 12, 10)
+        r_lay.setSpacing(8)
         lbl_reb_t = QLabel("Reinicio del equipo")
         lbl_reb_t.setObjectName("CardTitle")
         r_lay.addWidget(lbl_reb_t)
@@ -2914,8 +2920,8 @@ class MainWindow(QMainWindow):
         bot_card = QFrame()
         bot_card.setObjectName("Card")
         b_lay = QVBoxLayout(bot_card)
-        b_lay.setContentsMargins(18, 16, 18, 16)
-        b_lay.setSpacing(12)
+        b_lay.setContentsMargins(12, 10, 12, 10)
+        b_lay.setSpacing(8)
         lbl_bot_t = QLabel("Acciones sobre las aplicaciones marcadas")
         lbl_bot_t.setObjectName("CardTitle")
         b_lay.addWidget(lbl_bot_t)
@@ -2949,7 +2955,7 @@ class MainWindow(QMainWindow):
         p = QWidget()
         lay = QVBoxLayout(p)
         lay.setContentsMargins(14, 12, 14, 12)
-        lay.setSpacing(12)
+        lay.setSpacing(8)
 
         estado_card = QFrame()
         estado_card.setObjectName("SubBar")
@@ -2974,8 +2980,8 @@ class MainWindow(QMainWindow):
         form_card = QFrame()
         form_card.setObjectName("Card")
         form_lay = QVBoxLayout(form_card)
-        form_lay.setContentsMargins(18, 16, 18, 16)
-        form_lay.setSpacing(12)
+        form_lay.setContentsMargins(12, 10, 12, 10)
+        form_lay.setSpacing(8)
 
         form = QFormLayout()
         form.setSpacing(10)
@@ -3655,8 +3661,8 @@ class MainWindow(QMainWindow):
         scroll.setFrameShape(QFrame.NoFrame)
         w = QWidget()
         lay = QVBoxLayout(w)
-        lay.setContentsMargins(26, 20, 26, 20)
-        lay.setSpacing(16)
+        lay.setContentsMargins(18, 14, 18, 14)
+        lay.setSpacing(10)
 
         lbl = QLabel("Configuración de Taller")
         lbl.setObjectName("Title")
@@ -3665,8 +3671,8 @@ class MainWindow(QMainWindow):
         card = QFrame()
         card.setObjectName("Card")
         form = QFormLayout(card)
-        form.setSpacing(14)
-        form.setContentsMargins(22, 20, 22, 20)
+        form.setSpacing(10)
+        form.setContentsMargins(14, 12, 14, 12)
 
         self.cfg_nombre = QLineEdit(
             self.config.get("identidad", "nombre_establecimiento", "ABCell")
@@ -3677,7 +3683,7 @@ class MainWindow(QMainWindow):
         imp_card = QFrame()
         imp_card.setObjectName("Card")
         imp_lay = QVBoxLayout(imp_card)
-        imp_lay.setContentsMargins(18, 16, 18, 16)
+        imp_lay.setContentsMargins(12, 10, 12, 10)
         imp_lay.setSpacing(8)
 
         lbl_imp_t = QLabel("Impresión de tickets")
@@ -3694,15 +3700,15 @@ class MainWindow(QMainWindow):
 
         # --- Botón de engranaje para elegir el tema (selector emergente) ---
         self.btn_gearra_tema = self._boton_icono("gearra", "GearBtn", "Cambiar tema visual", 22)
-        self.btn_gearra_tema.setMinimumWidth(42)
-        self.btn_gearra_tema.setMinimumHeight(42)
+        self.btn_gearra_tema.setMinimumWidth(34)
+        self.btn_gearra_tema.setMinimumHeight(34)
         self.btn_gearra_tema.clicked.connect(self._abrir_selector_tema)
 
         self.lbl_tema_actual = QLabel("Tema: " + self._tema_actual())
         self.lbl_tema_actual.setObjectName("CardSub")
 
         row_tema = FlowLayout()
-        row_tema.setSpacing(12)
+        row_tema.setSpacing(8)
         row_tema.addWidget(self.btn_gearra_tema)
         row_tema.addWidget(self.lbl_tema_actual)
         row_tema.addStretch()
@@ -3726,7 +3732,7 @@ class MainWindow(QMainWindow):
         self.cfg_garantia.setPlainText(
             str(self.config.get("notas", "politicas_garantia", "") or "")
         )
-        self.cfg_garantia.setMinimumHeight(150)
+        self.cfg_garantia.setMinimumHeight(100)
         self.cfg_garantia.setPlaceholderText(
             "Escribe aqui las politicas de garantia que se imprimen en la nota..."
         )
@@ -3983,7 +3989,8 @@ class MainWindow(QMainWindow):
 
         self._aplicar_icono_abcell()
         self.aplicar_tema()
-        self.lbl_brand_sidebar.setText(self.cfg_nombre.text().strip() or "ABCell")
+        self.lbl_brand_sidebar.setText(APP_NAME)
+        self.setWindowTitle(f"{APP_NAME} — {self.cfg_nombre.text().strip()} — Taller")
         self._cargar_logo_widget(self.lbl_logo_sidebar, 42)
         self._actualizar_estado_impresora()
         QMessageBox.information(self, "Guardado", "La configuración se guardó correctamente.")

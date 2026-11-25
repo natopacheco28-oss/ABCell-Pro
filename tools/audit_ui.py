@@ -99,7 +99,7 @@ def audit(output):
             settle()
             sections = ["Órdenes de trabajo", "Nueva orden", "Inventario", "Catálogo y Ubicaciones",
                         "Estadísticas y Caja", "Utilidades Android", "Configuración de taller"]
-            for width, height in ((900, 600), (1366, 768), (1920, 1080)):
+            for width, height in ((900, 600), (1358, 690), (1366, 768), (1920, 1080)):
                 window.resize(width, height)
                 for index, section in enumerate(sections):
                     window.ir_a_seccion(index)

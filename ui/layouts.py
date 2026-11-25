@@ -13,7 +13,10 @@ from PySide6.QtWidgets import (
     QStyleOptionButton, QTableWidget, QWidget, QWidgetItem,
 )
 
-BUTTON_HEIGHT = 44
+from ui.table_sizing import fit_column_widths
+
+BUTTON_HEIGHT = 32
+INPUT_HEIGHT = 32
 
 
 def button_content_size(button):
@@ -24,9 +27,9 @@ def button_content_size(button):
     width = max(metrics.horizontalAdvance(line) for line in lines)
     height = metrics.lineSpacing() * len(lines)
     if not button.icon().isNull():
-        width += button.iconSize().width() + (10 if text else 0)
+        width += button.iconSize().width() + (6 if text else 0)
         height = max(height, button.iconSize().height())
-    return QSize(max(44, width + 40), max(BUTTON_HEIGHT, height + 24))
+    return QSize(max(32, width + 24), max(BUTTON_HEIGHT, height + 12))
 
 
 class ActionButton(QPushButton):
@@ -58,7 +61,7 @@ class FlowLayout(QLayout):
     ancho, no la suma de todos. Los campos con stretch absorben el espacio
     libre en su línea. Los espaciadores no crean líneas vacías.
     """
-    def __init__(self, parent=None, spacing=12):
+    def __init__(self, parent=None, spacing=8):
         super().__init__(parent)
         self._items = []
         self._stretch = {}
@@ -208,10 +211,10 @@ class VisualPolicy(QObject):
             elif isinstance(obj, (QLineEdit, QComboBox, QAbstractSpinBox)):
                 internal_editor = isinstance(obj, QLineEdit) and isinstance(obj.parentWidget(), (QComboBox, QAbstractSpinBox))
                 if not internal_editor:
-                    obj.setMinimumHeight(max(44, obj.fontMetrics().height() + 24))
+                    obj.setMinimumHeight(max(INPUT_HEIGHT, obj.fontMetrics().height() + 12))
                 if isinstance(obj, QComboBox):
                     obj.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
-                    obj.setMinimumContentsLength(18)
+                    obj.setMinimumContentsLength(10)
                     obj.view().setTextElideMode(Qt.ElideNone)
                     obj.setToolTip(obj.currentText())
             if isinstance(obj, QWidget) and obj.layout():
@@ -223,8 +226,8 @@ class VisualPolicy(QObject):
             layout.setRowWrapPolicy(QFormLayout.WrapLongRows)
             layout.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
             layout.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-            layout.setHorizontalSpacing(20)
-            layout.setVerticalSpacing(14)
+            layout.setHorizontalSpacing(12)
+            layout.setVerticalSpacing(8)
         for index in range(layout.count()):
             item = layout.itemAt(index)
             if item.layout():
@@ -272,7 +275,7 @@ class AdaptiveDialog(QDialog):
         content = QWidget()
         inner = QVBoxLayout(content)
         inner.setContentsMargins(4, 4, 4, 4)
-        inner.setSpacing(16)
+        inner.setSpacing(10)
         # Las acciones finales quedan visibles; solo se desplaza el formulario.
         footer = None
         if original.count():
@@ -304,7 +307,7 @@ class AdaptiveDialog(QDialog):
         screen = self.screen().availableGeometry()
         self.setMinimumHeight(0)
         self.setMinimumWidth(min(self.minimumWidth(), max(280, screen.width() - 40)))
-        self.resize(min(820, screen.width() - 40), min(760, screen.height() - 60))
+        self.resize(min(720, screen.width() - 40), min(640, screen.height() - 60))
         self.setMaximumSize(screen.width() - 24, screen.height() - 24)
 
     def exec(self):
@@ -318,7 +321,7 @@ class ReadableTable(QTableWidget):
         super().__init__(*args, **kwargs)
         self.setWordWrap(True)
         self.setTextElideMode(Qt.ElideNone)
-        self.setMinimumSize(300, 260)
+        self.setMinimumSize(240, 160)
         self._fit_timer = QTimer(self)
         self._fit_timer.setSingleShot(True)
         self._fit_timer.timeout.connect(self.fit_contents)
@@ -341,34 +344,67 @@ class ReadableTable(QTableWidget):
             widget.layout().activate()
         self._fit_timer.start(0)
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "_fit_timer"):
+            self._schedule_fit()
+
+    def viewportEvent(self, event):
+        result = super().viewportEvent(event)
+        if event.type() == QEvent.Resize and hasattr(self, "_fit_timer"):
+            self._schedule_fit()
+        return result
+
     def fit_contents(self):
-        header = self.horizontalHeader()
+        if self._fitting:
+            return
         self._fitting = True
-        header.setStretchLastSection(False)
-        for column in range(self.columnCount()):
-            title = self.horizontalHeaderItem(column)
-            width = self.fontMetrics().horizontalAdvance(title.text() if title else "") + 40
-            width = max(100, width)
-            for row in range(self.rowCount()):
-                widget = self.cellWidget(row, column)
-                if widget:
-                    width = max(width, widget.minimumSizeHint().width() + 40, widget.sizeHint().width() + 40)
-                else:
-                    item = self.item(row, column)
-                    if item:
-                        width = max(width, min(360, self.fontMetrics().horizontalAdvance(item.text()) + 32))
-            self.setColumnWidth(column, width)
-        self.doItemsLayout()
-        self.resizeRowsToContents()
-        for row in range(self.rowCount()):
-            height = max(80, self.rowHeight(row))
+        try:
+            header = self.horizontalHeader()
+            header.setStretchLastSection(False)
+            preferred, minimum, weights = [], [], []
             for column in range(self.columnCount()):
-                widget = self.cellWidget(row, column)
-                if widget:
-                    height = max(height, widget.sizeHint().height() + 36)
-            self.setRowHeight(row, height)
-        self.doItemsLayout()
-        self._fitting = False
+                title = self.horizontalHeaderItem(column)
+                name = title.text().upper() if title else ""
+                heading = self.fontMetrics().horizontalAdvance(name) + 20
+                is_action = name == "ACCIONES"
+                is_id = name in ("ID", "N°", "Nº", "FOLIO", "NÚMERO")
+                is_number = any(key in name for key in ("PRECIO", "COSTO", "SALDO", "STOCK", "TOTAL", "ÓRDENES", "FACTURADO", "GANANCIA"))
+                low = max(heading, 38 if is_id else 76 if is_number else 90)
+                desired = low
+                for row in range(self.rowCount()):
+                    widget = self.cellWidget(row, column)
+                    if widget:
+                        # El estilo de celda añade 8 px por lado y 4 arriba/abajo.
+                        needed = max(widget.minimumSizeHint().width(), widget.sizeHint().width()) + 20
+                        low = max(low, needed)
+                        desired = max(desired, low)
+                    else:
+                        item = self.item(row, column)
+                        if item:
+                            natural = self.fontMetrics().horizontalAdvance(item.text()) + 20
+                            desired = max(desired, min(320, natural))
+                preferred.append(max(low, desired))
+                minimum.append(low)
+                weights.append(0 if is_action or is_id or is_number else 1)
+            available = self.viewport().width() - 2
+            widths = fit_column_widths(preferred, minimum, available, weights)
+            for column, width in enumerate(widths):
+                self.setColumnWidth(column, width)
+            self.doItemsLayout()
+            self.resizeRowsToContents()
+            for row in range(self.rowCount()):
+                height = max(36, self.rowHeight(row))
+                for column in range(self.columnCount()):
+                    widget = self.cellWidget(row, column)
+                    if widget:
+                        height = max(height, widget.sizeHint().height() + 12)
+                self.setRowHeight(row, height)
+            self.doItemsLayout()
+        finally:
+            self._fitting = False
+        if self.viewport().width() - 2 != available:
+            self._fit_timer.start(0)
 
 
 class ContentCombo(QComboBox):
@@ -382,12 +418,18 @@ class ContentCombo(QComboBox):
         self.updateGeometry()
 
     def minimumSizeHint(self):
-        base = super().minimumSizeHint()
-        text_width = self.fontMetrics().horizontalAdvance(self.currentText()) + 64
-        return base.expandedTo(QSize(max(180, text_width), 44))
+        return QSize(110, INPUT_HEIGHT)
 
     def sizeHint(self):
-        return self.minimumSizeHint()
+        width = self.fontMetrics().horizontalAdvance(self.currentText()) + 36
+        return QSize(max(140, min(240, width)), INPUT_HEIGHT)
+
+    def showPopup(self):
+        longest = max((self.fontMetrics().horizontalAdvance(self.itemText(i))
+                       for i in range(self.count())), default=0)
+        available = self.screen().availableGeometry().width() - 40
+        self.view().setMinimumWidth(min(available, max(self.width(), longest + 44)))
+        super().showPopup()
 
 
 class MultilineInput(QPlainTextEdit):
@@ -395,7 +437,7 @@ class MultilineInput(QPlainTextEdit):
     def __init__(self, text="", parent=None):
         super().__init__(parent)
         self.setPlainText(text)
-        self.setMinimumHeight(120)
+        self.setMinimumHeight(80)
         self.setLineWrapMode(QPlainTextEdit.WidgetWidth)
 
     def text(self):
