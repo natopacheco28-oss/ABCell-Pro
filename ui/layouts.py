@@ -233,6 +233,7 @@ class VisualPolicy(QObject):
 
 def install_visual_policy(app):
     if not hasattr(app, "_abcell_visual_policy"):
+        QApplication.setAttribute(Qt.AA_DontUseNativeDialogs, True)
         app.setStyle("Fusion")
         palette = QPalette()
         for role, color in ((QPalette.Window, "#0c111b"), (QPalette.WindowText, "#edf2f7"),
