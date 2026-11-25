@@ -29,6 +29,53 @@ class LayoutTests(unittest.TestCase):
         for _ in range(6):
             self.app.processEvents()
 
+    def test_save_configuration_button_persists_and_feeds_printing(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from PIL import Image
+        from config.settings import ConfigManager
+        from database.db_manager import DatabaseManager
+        from ui.main_window import MainWindow
+        from integrations.printer_58mm import generar_texto_ticket
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = ConfigManager(str(root / "config.json"))
+            db = DatabaseManager(str(root / "test.db"))
+            window = MainWindow(db, config)
+            try:
+                window.show()
+                window.ir_a_seccion(6)
+                button = next(b for b in window.findChildren(QPushButton)
+                              if b.text() == "Guardar Configuración")
+                for name, color in (("Taller Norte", "red"), ("Servicio Sur", "blue")):
+                    logo = root / "elegido.png"
+                    Image.new("RGB", (80, 40), color).save(logo)
+                    window.cfg_nombre.setText(name)
+                    window.cfg_tel.setText("9611234567")
+                    window.cfg_dir.setText("Avenida Central 123")
+                    window.cfg_logo.setText(str(logo))
+                    window.cfg_garantia.setPlainText("Garantía actualizada")
+                    with patch("ui.main_window.QMessageBox.information") as success:
+                        button.click()  # Regresión: antes no había señal conectada.
+                        self.settle()
+                        success.assert_called_once()
+                    saved = ConfigManager(config.config_path)
+                    self.assertEqual(saved.get("identidad", "nombre_establecimiento"), name)
+                    self.assertIn(name, window.windowTitle())
+                    self.assertNotEqual(window.cfg_logo.text(), str(logo))
+                    note = generar_texto_ticket({"folio": 1}, saved)
+                    self.assertIn(name.upper(), note)
+                    self.assertIn("Avenida Central 123", note)
+                    with patch("ui.main_window.imprimir_ticket_prueba", return_value=(True, "OK")) as printing, \
+                         patch("ui.main_window.QMessageBox.information"):
+                        window._probar_impresora()
+                        self.assertIs(printing.call_args.args[0], config)
+                        self.assertEqual(printing.call_args.args[0].get("notas", "nombre_comercial"), name)
+            finally:
+                window.close()
+                db.cerrar()
+
     def test_filter_labels_blend_into_parent_surface_in_all_themes(self):
         from PySide6.QtWidgets import QFrame
         from ui.main_window import _campo_filtro

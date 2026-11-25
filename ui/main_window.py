@@ -3675,6 +3675,14 @@ class MainWindow(QMainWindow):
         lbl = QLabel("Configuración de Taller")
         lbl.setObjectName("Title")
         lay.addWidget(lbl)
+        ayuda = QLabel(
+            "Guarda los cambios antes de imprimir. Las siguientes notas impresas y "
+            "tickets digitales usarán estos datos y el logo del taller. El logo se "
+            "copia a la carpeta de datos; deja el campo vacío para quitarlo de las notas."
+        )
+        ayuda.setObjectName("CardSub")
+        ayuda.setWordWrap(True)
+        lay.addWidget(ayuda)
 
         card = QFrame()
         card.setObjectName("Card")
@@ -3723,7 +3731,8 @@ class MainWindow(QMainWindow):
 
         row_logo = FlowLayout()
         row_logo.setSpacing(10)
-        self.cfg_logo = QLineEdit(self.config.get("identidad", "logo_personalizado", ""))
+        self.cfg_logo = QLineEdit(self.config.ruta_logo_personalizado())
+        self.cfg_logo.setPlaceholderText("Elige un logo o deja vacío para notas sin logo")
         btn_logo = self._boton("Elegir logo", "ojo", jerarquia="secundario", tooltip="Elegir una imagen de logo personalizada")
         btn_logo.clicked.connect(self._elegir_logo)
         row_logo.addWidget(self.cfg_logo, 1)
@@ -3777,6 +3786,7 @@ class MainWindow(QMainWindow):
 
         btn_save = self._boton("Guardar Configuración", "guardar", jerarquia="principal", object_name="PrimaryBtn", tooltip="Guardar todos los cambios de configuración")
         btn_save.setMinimumWidth(195)
+        btn_save.clicked.connect(self._guardar_config)
         lay.addWidget(btn_save, alignment=Qt.AlignRight)
         lay.addStretch()
 
@@ -3983,17 +3993,17 @@ class MainWindow(QMainWindow):
             self.cfg_logo.setText(ruta)
 
     def _guardar_config(self):
-        self.config.set("identidad", "nombre_establecimiento", self.cfg_nombre.text().strip())
-        self.config.set("notas", "nombre_comercial", self.cfg_nombre.text().strip())
-        self.config.set("contacto", "telefono", self.cfg_tel.text().strip())
-        self.config.set("notas", "telefono", self.cfg_tel.text().strip())
-        self.config.set("contacto", "direccion", self.cfg_dir.text().strip())
-        self.config.set("notas", "direccion", self.cfg_dir.text().strip())
-        self.config.set("identidad", "logo_personalizado", self.cfg_logo.text().strip())
-        self.config.set(
-            "notas", "politicas_garantia", self.cfg_garantia.toPlainText().strip()
-        )
-        self.config.save()
+        try:
+            self.config.guardar_datos_taller(
+                nombre=self.cfg_nombre.text(), telefono=self.cfg_tel.text(),
+                direccion=self.cfg_dir.text(), logo=self.cfg_logo.text(),
+                garantia=self.cfg_garantia.toPlainText(),
+            )
+        except (ValueError, OSError) as exc:
+            QMessageBox.warning(self, "No se guardó la configuración", str(exc))
+            return
+        self.cfg_nombre.setText(self.config.get("identidad", "nombre_establecimiento"))
+        self.cfg_logo.setText(self.config.ruta_logo_personalizado())
 
         self._aplicar_icono_abcell()
         self.aplicar_tema()
