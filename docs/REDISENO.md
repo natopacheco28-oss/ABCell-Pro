@@ -1,4 +1,4 @@
-# Rediseño global — ABCell Tizimin — Taller
+# Rediseño global — ABCell Pro
 
 ## Implementación completa
 
@@ -21,11 +21,11 @@ El rediseño está aplicado al sistema existente en Python/PySide6. No se sustit
 
 - `ui/theme.py`: estilos completos para widgets, estados de foco/hover/deshabilitado, tablas, menús, pestañas, scrollbars y diálogos; seis paletas oscuras compatibles con preferencias anteriores.
 - `ui/layouts.py`:
-  - `ActionButton`: caja de contenido calculada según fuente, icono y padding; 44 px lógicos como mínimo.
+  - `ActionButton`: caja de contenido calculada según fuente, icono y padding; 32 px lógicos como mínimo.
   - `FlowLayout`: distribución con saltos de línea y soporte de sublayouts/campos expansibles.
-  - `ContentCombo`: reserva el ancho del texto seleccionado y conserva el texto completo en el desplegable y tooltip.
+  - `ContentCombo`: mantiene un ancho compacto y conserva el texto completo en el desplegable y tooltip.
   - `MultilineInput`: descripciones con word-wrap y API compatible con los formularios.
-  - `ReadableTable`: filas y columnas dimensionadas por contenido; reserva del padding del estilo alrededor de las acciones.
+  - `ReadableTable`: filas dimensionadas por contenido y columnas distribuidas según el viewport, preservando el ancho mínimo de las acciones.
   - `AdaptiveDialog`: formulario desplazable y acciones finales fuera del scroll.
   - `VisualPolicy`: reglas comunes también para botones de Qt y formularios de diálogos; paleta oscura, estilo Fusion, traducciones españolas y retirada segura del filtro al cerrar.
   - `scroll_page`: conserva el acceso al contenido cuando no cabe en el viewport.
@@ -60,15 +60,15 @@ Comprueba para cada botón:
 
 Incluye estados bloqueado/desbloqueado del inventario y acciones de filas creadas con datos de prueba. Las capturas ADB se simulan únicamente para construir su diálogo.
 
-### Evidencia de CI
+### Evidencia de CI de la revisión compacta
 
-- Commit `83c5674`: 12 pruebas aprobadas y 168 combinaciones botón/sección sin incidencias geométricas a escalas 100 %, 150 % y 200 % en Linux/Qt offscreen.
-- [Ejecución de comprobación](https://github.com/natopacheco28-oss/ABCell-Pro/actions/runs/45648950945).
-- Los informes completos incluyen los botones de navegación en cada pantalla; por eso el total es mayor que el número de nombres únicos.
-- Windows, commit `f2b277e`: 12 pruebas de regresión aprobadas. La auditoría detectó 93 repeticiones de tres botones del menú que superaban su ancho máximo; no se generó el ejecutable de esa versión.
-- Corregido en `2990e20`: se retiró el máximo rígido de 340 px del menú lateral, permitiendo que su layout reserve el ancho que requiere la fuente.
-- La repetición de la compilación Windows y la apertura del pull request quedaron bloqueadas por respuestas HTTP 500/502 de GitHub. **No se presenta un `.exe` actualizado como si estuviera compilado ni se certifica una auditoría Windows final sin ejecutarla.** El script `tools/build_windows.ps1` permite realizar ambas operaciones localmente.
-- La auditoría Windows previa a la compilación comprueba las métricas de la fuente de Windows por separado.
+- Linux/Qt offscreen, commit `e880772`: 20 pruebas aprobadas, incluida la regresión de catálogo a 1358×690, y 168 combinaciones botón/sección sin incidencias a escalas 100 %, 150 % y 200 %.
+- [Ejecución de comprobación](https://github.com/natopacheco28-oss/ABCell-Pro/actions/runs/45660881877).
+- Resoluciones de auditoría: 900×600, 1358×690, 1366×768 y 1920×1080.
+- Los informes repiten la navegación en cada sección; el total no representa nombres únicos.
+- Windows nativo, mismo commit: 20 pruebas aprobadas, 168 combinaciones sin incidencias y compilación PyInstaller completada. [Ejecución y artefacto ABCell-Pro-Windows](https://github.com/natopacheco28-oss/ABCell-Pro/actions/runs/45660882829).
+- El backend genérico offscreen en Windows produjo métricas de fuente incorrectas en CI; las pruebas Windows ahora usan su plataforma nativa, igual que el programa instalado.
+- El ejecutable generado es `ABCell Pro.exe`, con el ICO multirresolución derivado del logo suministrado y metadatos de producto ABCell Pro. No se ha probado interactivamente el ejecutable empaquetado ni hardware físico.
 
 Consulta [VERIFICACION_BOTONES.md](VERIFICACION_BOTONES.md) para la lista completa con medidas.
 

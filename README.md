@@ -1,4 +1,4 @@
-# ABCell Tizimin — Taller
+# ABCell Pro
 
 Sistema de gestión de taller de celulares y otros equipos, escrito en **Python y PySide6 (Qt 6)**. Incluye órdenes, pagos, inventario, catálogo, ubicaciones, reportes, tickets y utilidades Android ADB.
 
@@ -35,11 +35,11 @@ Para una sesión gráfica Linux también se necesitan las dependencias de la pla
 - Fondo `#0c111b`, tarjetas `#151e2c`, texto `#edf2f7` y acento `#c5f467`.
 - Escaneo/detección en ámbar; acciones destructivas/desactivar en rojo oscuro.
 - Seis variantes oscuras. Las preferencias antiguas se traducen a nombres compatibles sin modificar órdenes, pagos ni inventario.
-- Botones calculados por texto, icono y padding: al menos **44 px lógicos**; navegación **48 px**.
+- Botones calculados por texto, icono y padding: al menos **32 px lógicos**; navegación **38 px** (aumentan si la fuente lo necesita).
 - Filas adaptables: los controles completos pasan a una nueva línea. Cada etiqueta de filtro permanece con su campo.
 - Formularios con ajuste de filas; notas y falla multilinea; tarjetas y descripciones con word-wrap.
 - Scroll accesible cuando el contenido supera el tamaño disponible; no se reduce la tipografía ni se aplastan botones.
-- Tablas con texto sin elipsis, filas ajustables y columnas que reservan espacio para sus acciones. Scroll horizontal para columnas fuera del viewport.
+- Tablas con texto sin elipsis, filas ajustables y columnas que reservan espacio para sus acciones. Columnas ajustadas al viewport; scroll horizontal solo si los mínimos reales no caben.
 - Diálogos largos con formulario desplazable y acciones finales visibles. Selectores de archivos Qt para mantener el mismo estilo.
 - Eliminados: **Elegir adb.exe**, **¿Cómo conectar por USB?**, **Refrescar datos**. ADB conserva su búsqueda automática. Los datos siguen actualizándose al navegar y guardar.
 
@@ -88,7 +88,7 @@ Genera:
 - `buttons.json`: dimensiones reales en cada resolución, cobertura e incidencias.
 - Capturas PNG de las vistas y diálogos.
 
-La auditoría recorre 900×600, 1366×768 y 1920×1080 y falla si un botón no contiene sus glifos/iconos, invade a otro, sobresale de su contenedor o no fue cubierto según el código fuente. El workflow repite las pruebas a escalas de 100 %, 150 % y 200 %.
+La auditoría recorre 900×600, 1358×690, 1366×768 y 1920×1080 y falla si un botón no contiene sus glifos/iconos, invade a otro, sobresale de su contenedor o no fue cubierto según el código fuente. El workflow repite las pruebas a escalas de 100 %, 150 % y 200 %.
 
 Consulta [la verificación completa de botones](docs/VERIFICACION_BOTONES.md) y [las notas del rediseño](docs/REDISENO.md). La comprobación geométrica no equivale a probar impresoras o dispositivos físicos ni certifica todo posible texto introducido por el usuario.
 
@@ -105,7 +105,9 @@ El script crea el entorno, instala dependencias, verifica botones y empaqueta AD
 En GitHub Actions, ejecuta **Compilar ABCell Pro .exe** sobre la rama que quieras compilar. El workflow comprueba el código, ejecuta las pruebas y la auditoría Qt en Windows, prepara ADB y genera con PyInstaller:
 
 ```text
-ABCell_Gestion_Taller.exe
+ABCell Pro.exe
 ```
 
-Se publica como artefacto **ABCell_Gestion_Taller_exe**, acompañado de **verificacion-ui-windows**. El `.exe` Windows debe compilarse en Windows: no es una compilación cruzada desde Linux.
+Se publica como artefacto **ABCell-Pro-Windows**, acompañado de **verificacion-ui-windows**. El `.exe` Windows debe compilarse en Windows: no es una compilación cruzada desde Linux.
+
+El icono del programa y del ejecutable procede del logo suministrado, convertido a ICO multirresolución por `tools/prepare_icon.py`. La marca de la aplicación es independiente del logo personalizado del taller usado en tickets. Los nombres de las carpetas de datos antiguas se conservan por compatibilidad.

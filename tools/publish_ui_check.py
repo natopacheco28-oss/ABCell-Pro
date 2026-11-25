@@ -30,7 +30,7 @@ if __name__ == "__main__":
     tests_log = root / "tests.log"
     summary = (tests_log.read_text(errors="replace") if tests_log.exists() else "") + "\n" + (
         log.read_text(errors="replace") if log.exists() else "Sin log de auditoría")
-    text = report.read_text() if report.exists() else "La auditoría no llegó a generar el inventario."
+    text = report.read_text(encoding="utf-8") if report.exists() else "La auditoría no llegó a generar el inventario."
     publish("Diagnóstico UI escala " + os.environ["SCALE"], summary, text)
     if os.environ["SCALE"] == "1":
         from PIL import Image
