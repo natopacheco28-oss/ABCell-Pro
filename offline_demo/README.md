@@ -47,3 +47,54 @@ Pruebas: `python -m unittest discover -s tests -p 'test_demo_*.py' -v`. Los test
 ## Repositorio privado separado
 
 El paquete de código independiente contiene solo los módulos reducidos, estilos/controles compartidos, recursos y workflow de compilación demo. Puede subirse a **ABCell-Pro-Demo** privado cuando el propietario cree el repositorio y habilite el acceso. La conexión disponible al preparar esta edición no permitía crear ese repositorio; no se afirma que ya esté publicado allí.
+
+## Evidencia de esta entrega
+
+Código funcional `cc40558`. [Compilación demo Windows](https://github.com/natopacheco28-oss/ABCell-Pro/actions/runs/45713648604): 2 pruebas de aislamiento del paquete y 16 pruebas del código independiente (reloj, vencimiento, integridad, almacenamiento, límite de órdenes y GUI) aprobadas. PyInstaller generó `ABCell Pro Demo.exe`; no se ha realizado una prueba interactiva del ejecutable empaquetado.
+
+[Regresión del repositorio completo](https://github.com/natopacheco28-oss/ABCell-Pro/actions/runs/45713648626): 46 pruebas aprobadas en Linux/Qt offscreen al 100 %, 150 % y 200 %, además de la auditoría de 168 combinaciones botón/sección de la aplicación completa sin incidencias. Estas verificaciones no certifican toda posible fuente, equipo o manipulación del reloj.
+
+La demo recorre cuatro páginas a 900×600, 1358×690 y 1920×1080. Comprueba dimensiones de botones frente a glifos/iconos y contención en su padre. Alta, búsqueda y guardado de configuración tienen pruebas de funcionamiento; las entradas de módulos no incluidos permanecen deshabilitadas y no tienen implementación detrás. Las capturas de Windows se han inspeccionado para la vista de órdenes.
+
+### Lista de botones de la demo
+
+
+Geometría, no validación de hardware. Páginas: 0 órdenes, 1 nueva, 2 configuración, 3 límites.
+
+| Página | Botón | Mínimo ancho × alto | Resultado |
+|---|---|---|---|
+| 0 | Catálogo y Ubicaciones | 164 × 32 | Sin recorte geométrico |
+| 0 | Configuración de taller | 184 × 32 | Sin recorte geométrico |
+| 0 | Estadísticas y Caja | 133 × 32 | Sin recorte geométrico |
+| 0 | Inventario | 86 × 32 | Sin recorte geométrico |
+| 0 | Nueva orden | 125 × 32 | Sin recorte geométrico |
+| 0 | Sobre la demo | 134 × 32 | Sin recorte geométrico |
+| 0 | Utilidades Android | 136 × 32 | Sin recorte geométrico |
+| 0 | Órdenes de trabajo | 163 × 32 | Sin recorte geométrico |
+| 1 | Catálogo y Ubicaciones | 164 × 32 | Sin recorte geométrico |
+| 1 | Configuración de taller | 184 × 32 | Sin recorte geométrico |
+| 1 | Estadísticas y Caja | 133 × 32 | Sin recorte geométrico |
+| 1 | Guardar orden | 135 × 32 | Sin recorte geométrico |
+| 1 | Inventario | 86 × 32 | Sin recorte geométrico |
+| 1 | Limpiar | 68 × 32 | Sin recorte geométrico |
+| 1 | Nueva orden | 125 × 32 | Sin recorte geométrico |
+| 1 | Sobre la demo | 134 × 32 | Sin recorte geométrico |
+| 1 | Utilidades Android | 136 × 32 | Sin recorte geométrico |
+| 1 | Órdenes de trabajo | 163 × 32 | Sin recorte geométrico |
+| 2 | Catálogo y Ubicaciones | 164 × 32 | Sin recorte geométrico |
+| 2 | Configuración de taller | 184 × 32 | Sin recorte geométrico |
+| 2 | Estadísticas y Caja | 133 × 32 | Sin recorte geométrico |
+| 2 | Guardar Configuración | 184 × 32 | Sin recorte geométrico |
+| 2 | Inventario | 86 × 32 | Sin recorte geométrico |
+| 2 | Nueva orden | 125 × 32 | Sin recorte geométrico |
+| 2 | Sobre la demo | 134 × 32 | Sin recorte geométrico |
+| 2 | Utilidades Android | 136 × 32 | Sin recorte geométrico |
+| 2 | Órdenes de trabajo | 163 × 32 | Sin recorte geométrico |
+| 3 | Catálogo y Ubicaciones | 164 × 32 | Sin recorte geométrico |
+| 3 | Configuración de taller | 184 × 32 | Sin recorte geométrico |
+| 3 | Estadísticas y Caja | 133 × 32 | Sin recorte geométrico |
+| 3 | Inventario | 86 × 32 | Sin recorte geométrico |
+| 3 | Nueva orden | 125 × 32 | Sin recorte geométrico |
+| 3 | Sobre la demo | 134 × 32 | Sin recorte geométrico |
+| 3 | Utilidades Android | 136 × 32 | Sin recorte geométrico |
+| 3 | Órdenes de trabajo | 163 × 32 | Sin recorte geométrico |
