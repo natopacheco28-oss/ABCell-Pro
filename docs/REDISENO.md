@@ -62,11 +62,11 @@ Incluye estados bloqueado/desbloqueado del inventario y acciones de filas creada
 
 ### Evidencia de CI de la revisión compacta
 
-- Linux/Qt offscreen, commit `e880772`: 20 pruebas aprobadas, incluida la regresión de catálogo a 1358×690, y 168 combinaciones botón/sección sin incidencias a escalas 100 %, 150 % y 200 %.
-- [Ejecución de comprobación](https://github.com/natopacheco28-oss/ABCell-Pro/actions/runs/45660881877).
+- Linux/Qt offscreen, commit `2343b7d`: 21 pruebas aprobadas, incluida la regresión de catálogo a 1358×690, y 168 combinaciones botón/sección sin incidencias a escalas 100 %, 150 % y 200 %.
+- [Ejecución de comprobación](https://github.com/natopacheco28-oss/ABCell-Pro/actions/runs/45664760420).
 - Resoluciones de auditoría: 900×600, 1358×690, 1366×768 y 1920×1080.
 - Los informes repiten la navegación en cada sección; el total no representa nombres únicos.
-- Windows nativo, mismo commit: 20 pruebas aprobadas, 168 combinaciones sin incidencias y compilación PyInstaller completada. [Ejecución y artefacto ABCell-Pro-Windows](https://github.com/natopacheco28-oss/ABCell-Pro/actions/runs/45660882829).
+- Windows nativo, mismo commit: 21 pruebas aprobadas, 168 combinaciones sin incidencias y compilación PyInstaller completada. [Ejecución y artefacto ABCell-Pro-Windows](https://github.com/natopacheco28-oss/ABCell-Pro/actions/runs/45664761224).
 - El backend genérico offscreen en Windows produjo métricas de fuente incorrectas en CI; las pruebas Windows ahora usan su plataforma nativa, igual que el programa instalado.
 - El ejecutable generado es `ABCell Pro.exe`, con el ICO multirresolución derivado del logo suministrado y metadatos de producto ABCell Pro. No se ha probado interactivamente el ejecutable empaquetado ni hardware físico.
 
@@ -77,3 +77,9 @@ Consulta [VERIFICACION_BOTONES.md](VERIFICACION_BOTONES.md) para la lista comple
 Una auditoría geométrica no certifica todos los posibles datos libres, fuentes instaladas, configuraciones de accesibilidad o tamaños de monitor. La interfaz ofrece word-wrap, dimensiones basadas en contenido y scroll para esos casos. Las pruebas sin pantalla no sustituyen la revisión visual interactiva final en el equipo de destino.
 
 Las impresoras de 58/80 mm, un Android físico y sus permisos/drivers requieren una prueba de hardware. El formato de los tickets en papel sigue siendo claro para no gastar tinta; el fondo oscuro pertenece a la interfaz de la aplicación.
+
+## Fondos y autoría
+
+Los contenedores genéricos tienen fondo transparente para que etiquetas y agrupaciones se integren en las tarjetas, sin parches oscuros. Las superficies principales, entradas y controles mantienen sus fondos explícitos. La regresión comprueba píxeles reales en los seis temas.
+
+El crédito «Autor: ABCell Profecional» aparece al pie de la barra lateral y en los metadatos Windows (empresa/autor y copyright). No es una firma digital Authenticode ni garantiza evitar SmartScreen; consulta README.
