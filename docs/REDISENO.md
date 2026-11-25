@@ -65,6 +65,9 @@ Incluye estados bloqueado/desbloqueado del inventario y acciones de filas creada
 - Commit `83c5674`: 12 pruebas aprobadas y 168 combinaciones botón/sección sin incidencias geométricas a escalas 100 %, 150 % y 200 % en Linux/Qt offscreen.
 - [Ejecución de comprobación](https://github.com/natopacheco28-oss/ABCell-Pro/actions/runs/45648950945).
 - Los informes completos incluyen los botones de navegación en cada pantalla; por eso el total es mayor que el número de nombres únicos.
+- Windows, commit `f2b277e`: 12 pruebas de regresión aprobadas. La auditoría detectó 93 repeticiones de tres botones del menú que superaban su ancho máximo; no se generó el ejecutable de esa versión.
+- Corregido en `2990e20`: se retiró el máximo rígido de 340 px del menú lateral, permitiendo que su layout reserve el ancho que requiere la fuente.
+- La repetición de la compilación Windows y la apertura del pull request quedaron bloqueadas por respuestas HTTP 500/502 de GitHub. **No se presenta un `.exe` actualizado como si estuviera compilado ni se certifica una auditoría Windows final sin ejecutarla.** El script `tools/build_windows.ps1` permite realizar ambas operaciones localmente.
 - La auditoría Windows previa a la compilación comprueba las métricas de la fuente de Windows por separado.
 
 Consulta [VERIFICACION_BOTONES.md](VERIFICACION_BOTONES.md) para la lista completa con medidas.
