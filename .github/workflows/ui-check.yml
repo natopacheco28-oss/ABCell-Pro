@@ -34,15 +34,19 @@ jobs:
       - name: Compilar módulos Python
         run: python -m compileall -q config core database integrations services ui tools tests main.py
       - name: Pruebas de regresión
+        shell: bash
         run: |
           mkdir -p artifacts/ui
-          python -m unittest discover -s tests -v > artifacts/ui/tests.log 2>&1
+          set -o pipefail
+          python -u -m unittest discover -s tests -v 2>&1 | tee artifacts/ui/tests.log
       - name: Geometría de todas las pantallas y diálogos
         if: always()
+        shell: bash
         run: |
           mkdir -p artifacts/ui
-          python tools/audit_ui.py --output artifacts/ui > artifacts/ui/audit.log 2>&1
-        # El informe posterior publica también los errores por la API de checks.
+          set -o pipefail
+          python -u tools/audit_ui.py --output artifacts/ui 2>&1 | tee artifacts/ui/audit.log
+        # Mostrar y guardar el diagnóstico sin ocultar el código de error de Python.
       - name: Diagnóstico accesible por API
         if: always()
         env:
