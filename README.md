@@ -130,3 +130,13 @@ El logo se copia como PNG a `data/logos/` y se guarda una ruta relativa al JSON.
 Los tickets PNG ya exportados y los documentos ya impresos no cambian retroactivamente: genera o imprime de nuevo la nota después de guardar. La prueba de impresión también muestra la dirección y teléfono guardados.
 
 Regresión `12df13c`: **28 pruebas aprobadas**, incluidas persistencia tras reabrir, guardados consecutivos desde el botón real, actualización de texto/logo térmico y PNG, portabilidad del logo, retirada del logo/contacto y conservación de los datos ante errores de escritura o imágenes inválidas. Se simula la impresora; no sustituye una prueba física en papel.
+
+## Edición demo sin internet (independiente)
+
+La versión completa sigue arrancando con `main.py` y no tiene vencimiento añadido. La edición reducida vive en [`offline_demo/`](offline_demo/README.md) y se ejecuta en desarrollo con `python -m offline_demo.main`. Usa otra base y otro perfil de datos.
+
+Su prueba dura 7 días naturales desde el primer inicio y permite hasta 20 órdenes de prueba. No incluye los módulos de impresión, ADB, inventario, catálogo, reportes, exportación, abonos ni modo maestro. El control de fecha offline es una disuasión básica, no una protección invulnerable; consulta sus límites y ubicaciones de registro en el README demo.
+
+`python tools/package_demo.py --output artifacts/demo-source --zip artifacts/ABCell-Pro-Demo-codigo.zip` crea un paquete de código independiente por lista permitida, sin los módulos completos ni datos/licencias iniciadas. El workflow **Compilar demo sin internet** compila exclusivamente ese paquete y publica **ABCell-Pro-Demo-Windows**. Para entregar la prueba a un negocio, usa el artefacto con el `.exe`, no el código fuente.
+
+El repositorio privado separado `ABCell-Pro-Demo` sigue pendiente de creación/autorización por su propietario; el código preparado aquí no implica que se haya publicado allí.
