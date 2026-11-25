@@ -182,7 +182,7 @@ def scroll_page(widget):
 class VisualPolicy(QObject):
     """También protege los botones creados por Qt en mensajes y diálogos nativos Qt."""
     def eventFilter(self, obj, event):
-        if event.type() in (QEvent.Polish, QEvent.Show, QEvent.FontChange, QEvent.StyleChange):
+        if event.type() in (QEvent.Polish, QEvent.Show):
             if isinstance(obj, QPushButton):
                 obj.setMaximumHeight(16777215)
                 minimum = button_content_size(obj).expandedTo(obj.sizeHint())
@@ -257,6 +257,7 @@ class AdaptiveDialog(QDialog):
         original.addWidget(scroll_page(content))
         screen = self.screen().availableGeometry()
         self.setMinimumHeight(0)
+        self.setMinimumWidth(min(self.minimumWidth(), max(280, screen.width() - 40)))
         self.resize(min(max(620, self.sizeHint().width()), screen.width() - 40),
                     min(max(420, self.sizeHint().height()), screen.height() - 60))
         self.setMaximumSize(screen.width() - 24, screen.height() - 24)
@@ -306,7 +307,7 @@ class ReadableTable(QTableWidget):
             for row in range(self.rowCount()):
                 widget = self.cellWidget(row, column)
                 if widget:
-                    width = max(width, widget.minimumSizeHint().width() + 12, widget.sizeHint().width() + 12)
+                    width = max(width, widget.minimumSizeHint().width() + 40, widget.sizeHint().width() + 40)
                 else:
                     item = self.item(row, column)
                     if item:
@@ -315,11 +316,11 @@ class ReadableTable(QTableWidget):
         self.doItemsLayout()
         self.resizeRowsToContents()
         for row in range(self.rowCount()):
-            height = max(60, self.rowHeight(row))
+            height = max(80, self.rowHeight(row))
             for column in range(self.columnCount()):
                 widget = self.cellWidget(row, column)
                 if widget:
-                    height = max(height, widget.sizeHint().height() + 12)
+                    height = max(height, widget.sizeHint().height() + 36)
             self.setRowHeight(row, height)
         self.doItemsLayout()
         self._fitting = False
