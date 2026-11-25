@@ -201,7 +201,7 @@ class VisualPolicy(QObject):
         if event.type() in (QEvent.Polish, QEvent.Show):
             if isinstance(obj, QPushButton):
                 obj.setMaximumHeight(16777215)
-                minimum = button_content_size(obj).expandedTo(obj.sizeHint())
+                minimum = button_content_size(obj).expandedTo(obj.sizeHint()).expandedTo(obj.minimumSize())
                 obj.setMinimumSize(minimum)
                 obj.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
                 obj.setAccessibleName(obj.text() or obj.toolTip() or "Acción")
