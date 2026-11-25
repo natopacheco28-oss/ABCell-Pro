@@ -34,7 +34,6 @@ DEFAULT_CONFIG = {
         "tam_logo_px": 128,
         "mostrar_logo": True,
         "cortar_papel": True,
-        "impresora": "",
     },
     "whatsapp": {
         "codigo_pais": "52",
@@ -55,11 +54,14 @@ DEFAULT_CONFIG = {
         ),
     },
     "apariencia": {
-        "tema": "Oscuro",
+        "tema": "Mostrador Limpio",
     },
     "seguridad": {
         "salt": "",
         "hash": "",
+    },
+    "android": {
+        "ruta_adb": "",
     },
 }
 

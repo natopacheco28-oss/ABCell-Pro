@@ -1,6 +1,7 @@
 import base64
 import io
 import os
+import re
 import struct
 import textwrap
 
@@ -25,6 +26,64 @@ try:
     from PIL import Image, ImageDraw, ImageFont
 except Exception:
     Image = ImageDraw = ImageFont = None
+
+_RE_80MM = re.compile(
+    r"(^|[^0-9])(80\s*mm|pos[-\s_]*80|xp[-\s_]*80|rp[-\s_]*80|tp[-\s_]*80|"
+    r"ec[-\s_]*pm[-\s_]*80|atp[-\s_]*80|tm[-\s_]*t88|tm[-\s_]*t82|"
+    r"tm[-\s_]*m30|srp[-\s_]*3[35]0|tsp\s*1[04]|ct[-\s_]*s310|72\s*mm|80c\b)",
+    re.IGNORECASE,
+)
+
+_RE_58MM = re.compile(
+    r"(^|[^0-9])(58\s*mm|pos[-\s_]*58|xp[-\s_]*58|rp[-\s_]*58|tp[-\s_]*58|"
+    r"ec[-\s_]*pm[-\s_]*58|pt[-\s_]*210|tm[-\s_]*t20|mtp[-\s_]*(ii|2|3)|"
+    r"goojprt|48\s*mm|58c\b)",
+    re.IGNORECASE,
+)
+
+PARAMETROS_PAPEL = {
+    "58mm": {"ancho_chars": 32, "ancho_px": 384, "logo_px": 128},
+    "80mm": {"ancho_chars": 44, "ancho_px": 512, "logo_px": 148},
+}
+
+
+def clasificar_formato_papel(
+    nombre_impresora: str = "",
+    nombre_driver: str = "",
+    nombre_papel: str = "",
+    ancho_decimas_mm: int = 0,
+) -> str:
+    """Determina si una impresora térmica corresponde a formato 80mm o 58mm."""
+    texto = f"{nombre_impresora} {nombre_driver} {nombre_papel}".strip()
+    if _RE_80MM.search(texto):
+        return "80mm"
+    if _RE_58MM.search(texto):
+        return "58mm"
+
+    # PaperWidth en DEVMODE de Windows viene en décimas de milímetro (ej. 800 = 80.0 mm)
+    if 650 <= int(ancho_decimas_mm or 0) <= 950:
+        return "80mm"
+    if 380 <= int(ancho_decimas_mm or 0) < 650:
+        return "58mm"
+
+    return "58mm"
+
+
+def _detectar_formato_en_handle(win32print_mod, hprinter, nombre_impresora: str) -> str:
+    driver_name = ""
+    form_name = ""
+    paper_width = 0
+    try:
+        info2 = win32print_mod.GetPrinter(hprinter, 2)
+        if isinstance(info2, dict):
+            driver_name = str(info2.get("pDriverName") or "")
+            devmode = info2.get("pDevMode")
+            if devmode is not None:
+                form_name = str(getattr(devmode, "FormName", "") or "")
+                paper_width = int(getattr(devmode, "PaperWidth", 0) or 0)
+    except Exception:
+        pass
+    return clasificar_formato_papel(nombre_impresora, driver_name, form_name, paper_width)
 
 
 def logo_pil(config: ConfigManager | None = None):
@@ -79,15 +138,19 @@ def _fuente_ajustada(texto: str, ancho_max: int, tam_ini: int, tam_min: int = 12
     return _fuente(tam_min)
 
 
-def crear_encabezado_img(config: ConfigManager):
+def crear_encabezado_img(
+    config: ConfigManager,
+    ancho_px: int | None = None,
+    logo_px: int | None = None,
+):
     if not config.get("notas", "mostrar_logo", True):
         return None
     logo = logo_pil(config)
     if logo is None:
         return None
 
-    ancho = int(config.get("notas", "ancho_px", 384))
-    logo_px = int(config.get("notas", "tam_logo_px", 128))
+    ancho = int(ancho_px or config.get("notas", "ancho_px", 384))
+    tam_logo = int(logo_px or config.get("notas", "tam_logo_px", 128))
     nombre_comercial = config.get("notas", "nombre_comercial") or config.get(
         "identidad", "nombre_establecimiento", "ABCell Tizimin"
     )
@@ -98,21 +161,23 @@ def crear_encabezado_img(config: ConfigManager):
     )
 
     margen = 4
-    img = Image.new("L", (ancho, logo_px + 2 * margen), 255)
-    lg = logo.resize((logo_px, logo_px), Image.LANCZOS).point(
+    img = Image.new("L", (ancho, tam_logo + 2 * margen), 255)
+    lg = logo.resize((tam_logo, tam_logo), Image.LANCZOS).point(
         lambda p: 0 if p < 200 else 255
     )
     img.paste(lg, (0, margen))
 
-    x0 = logo_px + 10
+    x0 = tam_logo + 12
     disponible = max(60, ancho - x0)
     d = ImageDraw.Draw(img)
-    f1 = _fuente_ajustada(linea_1, disponible, 50)
+    tam_max_1 = 56 if ancho >= 500 else 50
+    tam_max_2 = 32 if ancho >= 500 else 28
+    f1 = _fuente_ajustada(linea_1, disponible, tam_max_1)
     b1 = d.textbbox((0, 0), linea_1, font=f1)
     h1 = b1[3] - b1[1]
 
     if linea_2:
-        f2 = _fuente_ajustada(linea_2, disponible, 28)
+        f2 = _fuente_ajustada(linea_2, disponible, tam_max_2)
         b2 = d.textbbox((0, 0), linea_2, font=f2)
         h2, hueco = b2[3] - b2[1], 10
         y = (img.height - (h1 + hueco + h2)) // 2
@@ -160,9 +225,12 @@ def guardar_ico(ruta: str = "logo.ico"):
 
 
 def generar_texto_ticket(
-    orden: dict, config: ConfigManager, incluir_nombre: bool = True
+    orden: dict,
+    config: ConfigManager,
+    incluir_nombre: bool = True,
+    ancho_chars: int | None = None,
 ) -> str:
-    ancho = int(config.get("notas", "ancho_ticket_chars", 32))
+    ancho = int(ancho_chars or config.get("notas", "ancho_ticket_chars", 32))
     sep = "-" * ancho
     doble_sep = "=" * ancho
     simbolo = config.get("regional", "simbolo_moneda", "$")
@@ -188,6 +256,13 @@ def generar_texto_ticket(
             salida.extend(textwrap.wrap(linea, ancho) or [""])
         return "\n".join(salida)
 
+    def fila_importe(etiqueta: str, monto: float) -> str:
+        valor = f"{simbolo}{monto:,.2f}"
+        espacio = ancho - len(etiqueta) - len(valor)
+        if espacio >= 1:
+            return f"{etiqueta}{' ' * espacio}{valor}"
+        return f"{etiqueta} {valor}"
+
     ticket = []
     if incluir_nombre:
         ticket.append(centrar(nombre_negocio.upper()))
@@ -206,12 +281,12 @@ def generar_texto_ticket(
     ticket.append(f"FECHA: {fecha_txt}")
     ticket.append(f"ESTATUS: {orden.get('estatus', 'Recibido')}")
     ticket.append(sep)
-    ticket.append(f"CLIENTE: {orden.get('cliente_nombre', '')}")
+    ticket.append(envolver(f"CLIENTE: {orden.get('cliente_nombre', '')}"))
     if orden.get("cliente_tel"):
         ticket.append(f"TEL: {orden.get('cliente_tel')}")
     ticket.append(sep)
     equipo = f"{orden.get('marca', '')} {orden.get('modelo', '')}".strip()
-    ticket.append(f"EQUIPO: {equipo}")
+    ticket.append(envolver(f"EQUIPO: {equipo}"))
     if orden.get("color") and orden.get("color") != "N/A":
         ticket.append(f"COLOR: {orden.get('color')}")
     if orden.get("imei"):
@@ -231,9 +306,9 @@ def generar_texto_ticket(
     anticipo = float(orden.get("anticipo") or 0.0)
     saldo = float(orden.get("saldo") or 0.0)
 
-    ticket.append(f"TOTAL:    {simbolo}{total:,.2f}")
-    ticket.append(f"ANTICIPO: {simbolo}{anticipo:,.2f}")
-    ticket.append(f"SALDO:    {simbolo}{saldo:,.2f}")
+    ticket.append(fila_importe("TOTAL:", total))
+    ticket.append(fila_importe("ANTICIPO:", anticipo))
+    ticket.append(fila_importe("SALDO:", saldo))
     ticket.append(doble_sep)
 
     if garantia:
@@ -249,28 +324,139 @@ def generar_texto_ticket(
     return "\n".join(ticket)
 
 
-def imprimir_ticket_58mm(orden: dict, config: ConfigManager) -> tuple[bool, str]:
-    nombre_impresora = config.get("notas", "impresora", "")
-    texto = generar_texto_ticket(
-        orden, config, incluir_nombre=not config.get("notas", "mostrar_logo", True)
-    )
+def obtener_estado_impresora() -> dict:
+    """Detecta la impresora predeterminada de Windows y su formato (58mm/80mm)."""
+    try:
+        import win32print
+    except Exception:
+        return {
+            "ok": False,
+            "nombre": "",
+            "formato": "",
+            "mensaje": "La detección de impresora solo funciona en Windows.",
+        }
+    try:
+        nombre_impresora = str(win32print.GetDefaultPrinter() or "").strip()
+        if not nombre_impresora:
+            return {
+                "ok": False,
+                "nombre": "",
+                "formato": "",
+                "mensaje": "No hay una impresora predeterminada configurada en Windows.",
+            }
+        hprinter = win32print.OpenPrinter(nombre_impresora)
+        try:
+            formato = _detectar_formato_en_handle(win32print, hprinter, nombre_impresora)
+        finally:
+            win32print.ClosePrinter(hprinter)
+        return {
+            "ok": True,
+            "nombre": nombre_impresora,
+            "formato": formato,
+            "mensaje": f"Impresora predeterminada: {nombre_impresora} (formato {formato}).",
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "nombre": "",
+            "formato": "",
+            "mensaje": f"No se pudo detectar la impresora predeterminada: {exc}",
+        }
 
+
+def imprimir_ticket_prueba(config: ConfigManager) -> tuple[bool, str]:
+    """Imprime una nota de prueba para verificar la impresora detectada (58mm u 80mm)."""
     try:
         import win32print
 
+        nombre_impresora = str(win32print.GetDefaultPrinter() or "").strip()
         if not nombre_impresora:
-            nombre_impresora = win32print.GetDefaultPrinter()
-        if not nombre_impresora:
-            return False, "No hay impresora predeterminada configurada en Windows."
+            return False, "No hay una impresora predeterminada configurada en Windows."
 
         hprinter = win32print.OpenPrinter(nombre_impresora)
         try:
+            formato = _detectar_formato_en_handle(win32print, hprinter, nombre_impresora)
+            params = PARAMETROS_PAPEL[formato]
+            ancho = params["ancho_chars"]
+            nombre_negocio = config.get("notas", "nombre_comercial") or config.get(
+                "identidad", "nombre_establecimiento", "ABCell"
+            )
+            lineas = [
+                nombre_negocio.upper().center(ancho),
+                "PRUEBA DE IMPRESION".center(ancho),
+                "=" * ancho,
+                f"Formato detectado: {formato}".center(ancho),
+                "Si ves esta nota, la impresora responde bien.".center(ancho),
+                "=" * ancho,
+                "\n\n",
+            ]
+            win32print.StartDocPrinter(hprinter, 1, ("Prueba ABCell", None, "RAW"))
+            try:
+                win32print.StartPagePrinter(hprinter)
+                win32print.WritePrinter(hprinter, b"\x1b\x40")
+                enc = crear_encabezado_img(
+                    config,
+                    ancho_px=params["ancho_px"],
+                    logo_px=params["logo_px"],
+                )
+                if enc is not None:
+                    win32print.WritePrinter(hprinter, b"\x1b\x61\x01")
+                    win32print.WritePrinter(hprinter, imagen_a_escpos(enc))
+                    win32print.WritePrinter(hprinter, b"\x1b\x61\x00")
+                win32print.WritePrinter(
+                    hprinter, "\n".join(lineas).encode("cp437", errors="replace")
+                )
+                if config.get("notas", "cortar_papel", True):
+                    win32print.WritePrinter(hprinter, b"\x1d\x56\x42\x00")
+                win32print.EndPagePrinter(hprinter)
+            finally:
+                win32print.EndDocPrinter(hprinter)
+        finally:
+            win32print.ClosePrinter(hprinter)
+        return True, f"Prueba enviada a {nombre_impresora} (formato {formato})."
+    except Exception as exc:
+        return (
+            False,
+            f"No se pudo imprimir la prueba ({exc}). Verifica la impresora predeterminada de Windows.",
+        )
+
+
+def imprimir_ticket_58mm(orden: dict, config: ConfigManager) -> tuple[bool, str]:
+    """Imprime automáticamente en la impresora predeterminada de Windows (58mm u 80mm)."""
+    try:
+        import win32print
+
+        nombre_impresora = str(win32print.GetDefaultPrinter() or "").strip()
+        if not nombre_impresora:
+            return False, "No hay una impresora predeterminada configurada en Windows."
+
+        hprinter = win32print.OpenPrinter(nombre_impresora)
+        try:
+            formato = _detectar_formato_en_handle(win32print, hprinter, nombre_impresora)
+            params = PARAMETROS_PAPEL[formato]
+            enc = crear_encabezado_img(
+                config,
+                ancho_px=params["ancho_px"],
+                logo_px=params["logo_px"],
+            )
+            # Si no hay logo gráfico, el nombre del negocio va dentro del texto.
+            texto = generar_texto_ticket(
+                orden,
+                config,
+                incluir_nombre=enc is None,
+                ancho_chars=params["ancho_chars"],
+            )
+
             win32print.StartDocPrinter(hprinter, 1, ("Ticket ABCell", None, "RAW"))
             try:
                 win32print.StartPagePrinter(hprinter)
-                enc = crear_encabezado_img(config)
+                # Inicializa impresora ESC/POS
+                win32print.WritePrinter(hprinter, b"\x1b\x40")
                 if enc is not None:
+                    # Centra el encabezado gráfico tanto en rollos de 58mm como de 80mm
+                    win32print.WritePrinter(hprinter, b"\x1b\x61\x01")
                     win32print.WritePrinter(hprinter, imagen_a_escpos(enc))
+                    win32print.WritePrinter(hprinter, b"\x1b\x61\x00")
                 win32print.WritePrinter(hprinter, texto.encode("cp437", errors="replace"))
                 if config.get("notas", "cortar_papel", True):
                     win32print.WritePrinter(hprinter, b"\x1d\x56\x42\x00")
@@ -279,9 +465,9 @@ def imprimir_ticket_58mm(orden: dict, config: ConfigManager) -> tuple[bool, str]
                 win32print.EndDocPrinter(hprinter)
         finally:
             win32print.ClosePrinter(hprinter)
-        return True, f"Ticket enviado a {nombre_impresora}."
+        return True, f"Ticket enviado a {nombre_impresora} (formato {formato})."
     except Exception as exc:
         return (
             False,
-            f"No se pudo imprimir directo ({exc}). Puedes copiar o exportar el ticket.",
+            f"No se pudo imprimir directo ({exc}). Verifica que tengas una impresora predeterminada en Windows.",
         )

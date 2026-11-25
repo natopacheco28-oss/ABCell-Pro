@@ -31,6 +31,38 @@ jobs:
           }
           Get-Item "logo.ico"
 
+      - name: Preparar platform-tools (ADB)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "platform_tools" | Out-Null
+          $sdkAdbDir = ""
+          if ($env:ANDROID_HOME -and (Test-Path (Join-Path $env:ANDROID_HOME "platform-tools\adb.exe"))) {
+            $sdkAdbDir = Join-Path $env:ANDROID_HOME "platform-tools"
+          } elseif ($env:ANDROID_SDK_ROOT -and (Test-Path (Join-Path $env:ANDROID_SDK_ROOT "platform-tools\adb.exe"))) {
+            $sdkAdbDir = Join-Path $env:ANDROID_SDK_ROOT "platform-tools"
+          }
+
+          if ($sdkAdbDir) {
+            Copy-Item (Join-Path $sdkAdbDir "adb.exe") "platform_tools\" -Force
+            Copy-Item (Join-Path $sdkAdbDir "AdbWinApi.dll") "platform_tools\" -Force
+            Copy-Item (Join-Path $sdkAdbDir "AdbWinUsbApi.dll") "platform_tools\" -Force
+          } else {
+            Invoke-WebRequest -Uri "https://dl.google.com/android/repository/platform-tools-latest-windows.zip" -OutFile "pt.zip"
+            Expand-Archive -Path "pt.zip" -DestinationPath "pt_tmp" -Force
+            Copy-Item "pt_tmp\platform-tools\adb.exe" "platform_tools\" -Force
+            Copy-Item "pt_tmp\platform-tools\AdbWinApi.dll" "platform_tools\" -Force
+            Copy-Item "pt_tmp\platform-tools\AdbWinUsbApi.dll" "platform_tools\" -Force
+            Remove-Item "pt.zip" -Force
+            Remove-Item "pt_tmp" -Recurse -Force
+          }
+
+          foreach ($req in @("adb.exe", "AdbWinApi.dll", "AdbWinUsbApi.dll")) {
+            if (-not (Test-Path (Join-Path "platform_tools" $req))) {
+              throw "Falta archivo requerido de ADB: $req"
+            }
+          }
+          Get-ChildItem "platform_tools"
+
       - name: Compilar ejecutable con PyInstaller
         shell: pwsh
         run: |
@@ -41,16 +73,21 @@ jobs:
             --hidden-import core.catalog_data `
             --hidden-import database.db_manager `
             --hidden-import services.workshop_service `
+            --hidden-import integrations.adb_manager `
             --hidden-import integrations.printer_58mm `
+            --hidden-import integrations.ticket_image `
             --hidden-import integrations.whatsapp_center `
             --hidden-import ui.theme `
+            --hidden-import ui.icons `
             --hidden-import ui.main_window `
+            --hidden-import PySide6.QtSvg `
             --add-data "config;config" `
             --add-data "core;core" `
             --add-data "database;database" `
             --add-data "services;services" `
             --add-data "integrations;integrations" `
             --add-data "ui;ui" `
+            --add-data "platform_tools;platform_tools" `
             main.py
 
       - name: Subir artefacto .exe

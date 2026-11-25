@@ -204,6 +204,55 @@ class WorkshopService:
         self.db.ejecutar("DELETE FROM ordenes WHERE folio = ?", (folio,))
         return True
 
+    def actualizar_orden_datos(self, folio: int, datos: dict) -> bool:
+        """Edita los datos generales de una orden ya registrada.
+
+        Recalcula el saldo como costo_total - anticipo (el anticipo y el
+        historial de pagos no se tocan). Devuelve False si no existe.
+        """
+        folio = int(folio)
+        orden = self.obtener_orden(folio)
+        if not orden:
+            return False
+        costo_rep = float(datos.get("costo_repuesto", orden.get("costo_repuesto") or 0.0))
+        costo_total = float(datos.get("costo_total", orden.get("costo_total") or 0.0))
+        anticipo = float(orden.get("anticipo") or 0.0)
+        saldo = max(0.0, costo_total - anticipo)
+        self.db.ejecutar(
+            """
+            UPDATE ordenes
+            SET cliente_nombre = ?, cliente_tel = ?, categoria = ?, marca = ?,
+                modelo = ?, color = ?, imei = ?, pin_pass = ?, patron = ?,
+                estado_fisico = ?, falla = ?, servicio_nombre = ?, ubicacion = ?,
+                estatus = ?, costo_repuesto = ?, costo_total = ?, saldo = ?,
+                notas_internas = ?, fecha_actualizacion = ?
+            WHERE folio = ?
+            """,
+            (
+                str(datos.get("cliente_nombre", orden.get("cliente_nombre", ""))).strip(),
+                str(datos.get("cliente_tel", orden.get("cliente_tel", ""))).strip(),
+                str(datos.get("categoria", orden.get("categoria", "Celulares"))).strip(),
+                str(datos.get("marca", orden.get("marca", ""))).strip(),
+                str(datos.get("modelo", orden.get("modelo", ""))).strip(),
+                str(datos.get("color", orden.get("color", ""))).strip(),
+                str(datos.get("imei", orden.get("imei", ""))).strip(),
+                str(datos.get("pin_pass", orden.get("pin_pass", ""))).strip(),
+                str(datos.get("patron", orden.get("patron", "Sin patrón"))).strip(),
+                str(datos.get("estado_fisico", orden.get("estado_fisico", ""))).strip(),
+                str(datos.get("falla", orden.get("falla", ""))).strip(),
+                str(datos.get("servicio_nombre", orden.get("servicio_nombre", ""))).strip(),
+                str(datos.get("ubicacion", orden.get("ubicacion", "Sin asignar"))).strip(),
+                str(datos.get("estatus", orden.get("estatus", "Recibido"))).strip(),
+                costo_rep,
+                costo_total,
+                saldo,
+                str(datos.get("notas_internas", orden.get("notas_internas", ""))).strip(),
+                self._ahora_str(),
+                folio,
+            ),
+        )
+        return True
+
     def obtener_metricas_dashboard(self, categoria: str = "Todas") -> dict:
         ordenes = self.listar_ordenes(categoria=categoria)
         cerrados = {"Entregado", "Cancelado"}
@@ -310,6 +359,262 @@ class WorkshopService:
             (nombre_limpio, str(tipo or "General").strip(), str(descripcion or "").strip()),
         )
         return nombre_limpio
+
+    def actualizar_servicio(self, servicio_id: int, datos: dict) -> bool:
+        """Actualiza un servicio del catálogo. Devuelve False si no existe."""
+        servicio_id = int(servicio_id)
+        existe = self.db.consultar_uno(
+            "SELECT id FROM servicios_catalogo WHERE id = ?", (servicio_id,)
+        )
+        if not existe:
+            return False
+        self.db.ejecutar(
+            """
+            UPDATE servicios_catalogo
+            SET categoria = ?, marca = ?, modelo = ?, nombre = ?, precio = ?
+            WHERE id = ?
+            """,
+            (
+                str(datos.get("categoria") or "Celulares").strip(),
+                str(datos.get("marca") or "").strip(),
+                str(datos.get("modelo") or "").strip(),
+                str(datos.get("nombre") or "").strip(),
+                float(datos.get("precio") or 0.0),
+                servicio_id,
+            ),
+        )
+        return True
+
+    def eliminar_servicio(self, servicio_id: int) -> bool:
+        """Elimina un servicio del catálogo. Devuelve False si no existe."""
+        servicio_id = int(servicio_id)
+        existe = self.db.consultar_uno(
+            "SELECT id FROM servicios_catalogo WHERE id = ?", (servicio_id,)
+        )
+        if not existe:
+            return False
+        self.db.ejecutar("DELETE FROM servicios_catalogo WHERE id = ?", (servicio_id,))
+        return True
+
+    def actualizar_ubicacion(
+        self, ubicacion_id: int, nombre: str, tipo: str = "General", descripcion: str = ""
+    ) -> bool:
+        """Actualiza una ubicación. Devuelve False si no existe o el nombre ya está en uso."""
+        ubicacion_id = int(ubicacion_id)
+        nombre_limpio = str(nombre or "").strip()
+        if not nombre_limpio:
+            return False
+        existe = self.db.consultar_uno(
+            "SELECT id FROM ubicaciones WHERE id = ?", (ubicacion_id,)
+        )
+        if not existe:
+            return False
+        duplicada = self.db.consultar_uno(
+            "SELECT id FROM ubicaciones WHERE nombre = ? AND id != ?",
+            (nombre_limpio, ubicacion_id),
+        )
+        if duplicada:
+            return False
+        self.db.ejecutar(
+            """
+            UPDATE ubicaciones
+            SET nombre = ?, tipo = ?, descripcion = ?
+            WHERE id = ?
+            """,
+            (
+                nombre_limpio,
+                str(tipo or "General").strip(),
+                str(descripcion or "").strip(),
+                ubicacion_id,
+            ),
+        )
+        return True
+
+    def eliminar_ubicacion(self, ubicacion_id: int) -> bool:
+        """Elimina una ubicación. Devuelve False si no existe."""
+        ubicacion_id = int(ubicacion_id)
+        existe = self.db.consultar_uno(
+            "SELECT id FROM ubicaciones WHERE id = ?", (ubicacion_id,)
+        )
+        if not existe:
+            return False
+        self.db.ejecutar("DELETE FROM ubicaciones WHERE id = ?", (ubicacion_id,))
+        return True
+
+    # ------------------------------------------
+    # INVENTARIO DE PRODUCTOS Y REFACCIONES
+    # ------------------------------------------
+    def listar_inventario(
+        self,
+        busqueda: str = "",
+        categoria: str = "Todas",
+        filtro_stock: str = "Todos",
+    ) -> list[dict]:
+        sql = "SELECT * FROM inventario WHERE 1=1"
+        params: list = []
+
+        if categoria and categoria != "Todas":
+            sql += " AND categoria = ?"
+            params.append(categoria)
+
+        if filtro_stock == "Disponible":
+            sql += " AND COALESCE(stock, 0) > 0"
+        elif filtro_stock == "Stock bajo":
+            sql += " AND COALESCE(stock, 0) > 0 AND COALESCE(stock, 0) <= COALESCE(stock_minimo, 2)"
+        elif filtro_stock == "Agotado":
+            sql += " AND COALESCE(stock, 0) <= 0"
+
+        if busqueda and busqueda.strip():
+            termino = f"%{busqueda.strip()}%"
+            sql += """
+                AND (
+                    codigo LIKE ?
+                    OR nombre LIKE ?
+                    OR categoria LIKE ?
+                    OR marca_modelo LIKE ?
+                    OR ubicacion LIKE ?
+                    OR notas LIKE ?
+                )
+            """
+            params.extend([termino] * 6)
+
+        sql += " ORDER BY nombre COLLATE NOCASE ASC, id DESC"
+        return self.db.consultar_todos(sql, tuple(params))
+
+    def obtener_producto_inventario(self, producto_id: int) -> dict | None:
+        return self.db.consultar_uno(
+            "SELECT * FROM inventario WHERE id = ?", (int(producto_id),)
+        )
+
+    def guardar_producto_inventario(self, datos: dict) -> int:
+        nombre = str(datos.get("nombre") or "").strip()
+        if not nombre:
+            raise ValueError("El nombre del producto es obligatorio.")
+        ahora = self._ahora_str()
+        stock = max(0, int(datos.get("stock") or 0))
+        stock_min = max(0, int(datos.get("stock_minimo") if datos.get("stock_minimo") is not None else 2))
+        costo = max(0.0, float(datos.get("costo_compra") or 0.0))
+        precio = max(0.0, float(datos.get("precio_venta") or 0.0))
+
+        cur = self.db.ejecutar(
+            """
+            INSERT INTO inventario (
+                codigo, nombre, categoria, marca_modelo, stock, stock_minimo,
+                costo_compra, precio_venta, ubicacion, notas, fecha_actualizacion
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(datos.get("codigo") or "").strip(),
+                nombre,
+                str(datos.get("categoria") or "Refacciones").strip(),
+                str(datos.get("marca_modelo") or "").strip(),
+                stock,
+                stock_min,
+                costo,
+                precio,
+                str(datos.get("ubicacion") or "").strip(),
+                str(datos.get("notas") or "").strip(),
+                ahora,
+            ),
+        )
+        return int(cur.lastrowid)
+
+    def actualizar_producto_inventario(self, producto_id: int, datos: dict) -> bool:
+        producto_id = int(producto_id)
+        actual = self.obtener_producto_inventario(producto_id)
+        if not actual:
+            return False
+        nombre = str(datos.get("nombre", actual.get("nombre", "")) or "").strip()
+        if not nombre:
+            return False
+        stock = max(0, int(datos.get("stock", actual.get("stock") or 0)))
+        stock_min = max(0, int(datos.get("stock_minimo", actual.get("stock_minimo") or 0)))
+        costo = max(0.0, float(datos.get("costo_compra", actual.get("costo_compra") or 0.0)))
+        precio = max(0.0, float(datos.get("precio_venta", actual.get("precio_venta") or 0.0)))
+
+        self.db.ejecutar(
+            """
+            UPDATE inventario
+            SET codigo = ?, nombre = ?, categoria = ?, marca_modelo = ?,
+                stock = ?, stock_minimo = ?, costo_compra = ?, precio_venta = ?,
+                ubicacion = ?, notas = ?, fecha_actualizacion = ?
+            WHERE id = ?
+            """,
+            (
+                str(datos.get("codigo", actual.get("codigo", "")) or "").strip(),
+                nombre,
+                str(datos.get("categoria", actual.get("categoria", "Refacciones")) or "Refacciones").strip(),
+                str(datos.get("marca_modelo", actual.get("marca_modelo", "")) or "").strip(),
+                stock,
+                stock_min,
+                costo,
+                precio,
+                str(datos.get("ubicacion", actual.get("ubicacion", "")) or "").strip(),
+                str(datos.get("notas", actual.get("notas", "")) or "").strip(),
+                self._ahora_str(),
+                producto_id,
+            ),
+        )
+        return True
+
+    def ajustar_stock_inventario(self, producto_id: int, delta: int) -> dict | None:
+        producto_id = int(producto_id)
+        actual = self.obtener_producto_inventario(producto_id)
+        if not actual:
+            return None
+        nuevo_stock = max(0, int(actual.get("stock") or 0) + int(delta))
+        self.db.ejecutar(
+            """
+            UPDATE inventario
+            SET stock = ?, fecha_actualizacion = ?
+            WHERE id = ?
+            """,
+            (nuevo_stock, self._ahora_str(), producto_id),
+        )
+        return self.obtener_producto_inventario(producto_id)
+
+    def eliminar_producto_inventario(self, producto_id: int) -> bool:
+        producto_id = int(producto_id)
+        actual = self.obtener_producto_inventario(producto_id)
+        if not actual:
+            return False
+        self.db.ejecutar("DELETE FROM inventario WHERE id = ?", (producto_id,))
+        return True
+
+    def obtener_resumen_inventario(self) -> dict:
+        items = self.listar_inventario()
+        total_productos = len(items)
+        total_unidades = 0
+        stock_bajo = 0
+        agotados = 0
+        valor_costo = 0.0
+        valor_venta = 0.0
+
+        for it in items:
+            st = max(0, int(it.get("stock") or 0))
+            st_min = max(0, int(it.get("stock_minimo") if it.get("stock_minimo") is not None else 2))
+            costo = max(0.0, float(it.get("costo_compra") or 0.0))
+            precio = max(0.0, float(it.get("precio_venta") or 0.0))
+
+            total_unidades += st
+            if st <= 0:
+                agotados += 1
+            elif st <= st_min:
+                stock_bajo += 1
+
+            valor_costo += st * costo
+            valor_venta += st * precio
+
+        return {
+            "total_productos": total_productos,
+            "total_unidades": total_unidades,
+            "stock_bajo": stock_bajo,
+            "agotados": agotados,
+            "valor_costo": valor_costo,
+            "valor_venta": valor_venta,
+            "ganancia_potencial": valor_venta - valor_costo,
+        }
 
     def generar_reporte_financiero(self) -> dict:
         hoy_str = datetime.now().strftime("%Y-%m-%d")
