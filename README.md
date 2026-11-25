@@ -117,3 +117,16 @@ El icono del programa y del ejecutable procede del logo suministrado, convertido
 La firma de autor visible es **ABCell Profecional**. También figura en los campos de empresa/autor y copyright de las propiedades de `ABCell Pro.exe`. Es un crédito de autoría, **no una firma digital Authenticode**: cambiar estos textos o el icono no elimina los avisos de SmartScreen ni acredita un editor verificado.
 
 Para distribuir con firma digital se necesita un certificado de firma de código válido emitido para el editor, firmar el `.exe` final y verificar esa firma (normalmente con sellado de tiempo). Las claves privadas deben permanecer fuera del repositorio. Incluso un ejecutable firmado puede mostrar avisos mientras adquiere reputación. Este proyecto no incluye certificado ni afirma que sus ejecutables estén firmados digitalmente.
+
+## Cambiar los datos y el logo de cada taller
+
+1. En **Configuración de Taller**, edita el nombre, teléfono/WhatsApp, dirección y políticas de garantía.
+2. Pulsa **Elegir logo** y selecciona una imagen PNG/JPG/WebP. Si no deseas logo en las notas, deja ese campo vacío.
+3. Pulsa **Guardar Configuración** y espera la confirmación. El nombre es obligatorio; si el logo no es válido o no se puede guardar, se avisa y se conserva la configuración anterior.
+4. Usa **Probar impresión**, **Imprimir ticket** o genera nuevamente el **Ticket digital**. Las siguientes notas usan la configuración guardada, sin reiniciar, incluso si la orden se creó antes del cambio.
+
+El logo se copia como PNG a `data/logos/` y se guarda una ruta relativa al JSON. Respalda/mueve toda la carpeta `data/`, incluida `logos/`. Las rutas absolutas antiguas siguen admitiéndose; al guardar se copia el archivo si está disponible. No se usa el logo genérico de ABCell como sustituto de un logo de taller ausente o ilegible. El icono de la aplicación sigue siendo ABCell Pro y es independiente del logo de las notas.
+
+Los tickets PNG ya exportados y los documentos ya impresos no cambian retroactivamente: genera o imprime de nuevo la nota después de guardar. La prueba de impresión también muestra la dirección y teléfono guardados.
+
+Regresión `12df13c`: **28 pruebas aprobadas**, incluidas persistencia tras reabrir, guardados consecutivos desde el botón real, actualización de texto/logo térmico y PNG, portabilidad del logo, retirada del logo/contacto y conservación de los datos ante errores de escritura o imágenes inválidas. Se simula la impresora; no sustituye una prueba física en papel.

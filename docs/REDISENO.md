@@ -62,11 +62,11 @@ Incluye estados bloqueado/desbloqueado del inventario y acciones de filas creada
 
 ### Evidencia de CI de la revisión compacta
 
-- Linux/Qt offscreen, commit `2343b7d`: 21 pruebas aprobadas, incluida la regresión de catálogo a 1358×690, y 168 combinaciones botón/sección sin incidencias a escalas 100 %, 150 % y 200 %.
-- [Ejecución de comprobación](https://github.com/natopacheco28-oss/ABCell-Pro/actions/runs/45664760420).
+- Linux/Qt offscreen, commit `12df13c`: 28 pruebas aprobadas, incluida la regresión de catálogo a 1358×690, y 168 combinaciones botón/sección sin incidencias a escalas 100 %, 150 % y 200 %.
+- [Ejecución de comprobación](https://github.com/natopacheco28-oss/ABCell-Pro/actions/runs/45704217926).
 - Resoluciones de auditoría: 900×600, 1358×690, 1366×768 y 1920×1080.
 - Los informes repiten la navegación en cada sección; el total no representa nombres únicos.
-- Windows nativo, mismo commit: 21 pruebas aprobadas, 168 combinaciones sin incidencias y compilación PyInstaller completada. [Ejecución y artefacto ABCell-Pro-Windows](https://github.com/natopacheco28-oss/ABCell-Pro/actions/runs/45664761224).
+- Windows nativo, mismo commit: 28 pruebas aprobadas, 168 combinaciones sin incidencias y compilación PyInstaller completada. [Ejecución y artefacto ABCell-Pro-Windows](https://github.com/natopacheco28-oss/ABCell-Pro/actions/runs/45704218056).
 - El backend genérico offscreen en Windows produjo métricas de fuente incorrectas en CI; las pruebas Windows ahora usan su plataforma nativa, igual que el programa instalado.
 - El ejecutable generado es `ABCell Pro.exe`, con el ICO multirresolución derivado del logo suministrado y metadatos de producto ABCell Pro. No se ha probado interactivamente el ejecutable empaquetado ni hardware físico.
 
@@ -83,3 +83,12 @@ Las impresoras de 58/80 mm, un Android físico y sus permisos/drivers requieren 
 Los contenedores genéricos tienen fondo transparente para que etiquetas y agrupaciones se integren en las tarjetas, sin parches oscuros. Las superficies principales, entradas y controles mantienen sus fondos explícitos. La regresión comprueba píxeles reales en los seis temas.
 
 El crédito «Autor: ABCell Profecional» aparece al pie de la barra lateral y en los metadatos Windows (empresa/autor y copyright). No es una firma digital Authenticode ni garantiza evitar SmartScreen; consulta README.
+
+## Corrección de configuración del taller
+
+- Causa: el botón «Guardar Configuración» no tenía conectado su callback; el encabezado gráfico también priorizaba líneas ABCell/TIZIMIN heredadas.
+- Ahora el botón guarda identidad, contacto, notas y garantía mediante una única operación; el JSON se reemplaza de forma atómica y se restaura el estado en memoria si falla.
+- El logo se valida, se copia como PNG portable junto a los datos y se recarga en cada generación de nota. Para impresión térmica se respetan proporciones y se compone la transparencia sobre blanco.
+- El encabezado gráfico toma el nombre vigente, no las líneas antiguas. Las impresiones de prueba incluyen contacto actualizado; el ticket digital respeta la presencia o retirada del logo.
+- La prueba GUI pulsa el botón en dos actualizaciones sucesivas y recarga el JSON. Las pruebas sin GUI inspeccionan texto dibujado y píxeles de las notas PNG, la salida ESC/POS simulada y la portabilidad del logo.
+- La auditoría mantiene 168 combinaciones sin incidencias en Windows y Linux (100 %, 150 % y 200 %). No se ha certificado hardware físico ni ejecutado interactivamente el binario empaquetado.

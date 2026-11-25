@@ -1,14 +1,16 @@
 # Verificación de botones — ABCell Pro
 
-Revisión compacta `2343b7d`. Cada tabla enumera las 168 combinaciones botón/sección, incluyendo navegación repetida por pantalla, con sus mínimos calculados y confirmación geométrica. No es una prueba funcional de cada clic ni una certificación de hardware.
+Revisión compacta `12df13c`. Cada tabla enumera las 168 combinaciones botón/sección, incluyendo navegación repetida por pantalla, con sus mínimos calculados y confirmación geométrica. No es una prueba funcional de cada clic ni una certificación de hardware.
 
-- Windows nativo: 21 pruebas aprobadas y 168 combinaciones sin incidencias. [Compilación y auditoría](https://github.com/natopacheco28-oss/ABCell-Pro/actions/runs/45664761224).
-- Linux Qt offscreen: 21 pruebas y 168 combinaciones sin incidencias a escalas 100 %, 150 % y 200 %. [Ejecución](https://github.com/natopacheco28-oss/ABCell-Pro/actions/runs/45664760420).
+- Windows nativo: 28 pruebas aprobadas y 168 combinaciones sin incidencias. [Compilación y auditoría](https://github.com/natopacheco28-oss/ABCell-Pro/actions/runs/45704218056).
+- Linux Qt offscreen: 28 pruebas y 168 combinaciones sin incidencias a escalas 100 %, 150 % y 200 %. [Ejecución](https://github.com/natopacheco28-oss/ABCell-Pro/actions/runs/45704217926).
 - Resoluciones auditadas: 900×600, 1358×690, 1366×768 y 1920×1080. El catálogo tiene además una regresión específica a 1358×690 para comprobar sidebar ≤280 px, acciones visibles y ausencia de scroll horizontal con los datos de prueba.
 - Tamaños en píxeles lógicos; mínimos generales 32 px y navegación 38 px. El texto puede exigir mayor tamaño. Las métricas varían por fuente/plataforma.
 - Retirados de toda la interfaz: «Elegir adb.exe», «¿Cómo conectar por USB?» y «Refrescar datos».
 
 Se comprobó además por píxeles que las etiquetas y sus contenedores muestran el fondo de la tarjeta en los seis temas, y que la firma de autor permanece visible dentro de la barra lateral. No se agregaron ni retiraron botones en esta revisión.
+
+«Guardar Configuración» conserva su tamaño y ahora se verifica funcionalmente: dos clics de guardado con datos distintos, JSON recargado y consumo de esos datos por impresión. No se agregaron botones.
 
 ## Windows — fuente nativa
 
