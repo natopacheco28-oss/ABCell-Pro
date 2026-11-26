@@ -1,0 +1,70 @@
+name: Verificar interfaz Qt
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main, 'arena/e2b7fed6-abcell-pro']
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  geometry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        scale: ['1', '1.5', '2']
+    env:
+      QT_QPA_PLATFORM: offscreen
+      QT_SCALE_FACTOR: ${{ matrix.scale }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Dependencias Qt de sistema
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3
+      - name: Dependencias Python
+        run: pip install -r requirements.txt
+      - name: Compilar módulos Python
+        run: python -m compileall -q config core database integrations services ui tools tests main.py
+      - name: Pruebas de regresión
+        shell: bash
+        run: |
+          mkdir -p artifacts/ui
+          set -o pipefail
+          python -u -m unittest discover -s tests -v 2>&1 | tee artifacts/ui/tests.log
+      - name: Geometría de todas las pantallas y diálogos
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p artifacts/ui
+          set -o pipefail
+          python -u tools/audit_ui.py --output artifacts/ui 2>&1 | tee artifacts/ui/audit.log
+        # Mostrar y guardar el diagnóstico sin ocultar el código de error de Python.
+      - name: Diagnóstico accesible por API
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          SCALE: ${{ matrix.scale }}
+        run: python tools/publish_ui_check.py
+      - name: Publicar verificación y capturas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auditoria-ui-escala-${{ matrix.scale }}
+          path: artifacts/ui/
+          if-no-files-found: warn
+      - name: Resumen de botones
+        if: always()
+        run: |
+          if [ -f artifacts/ui/BUTTON_CHECKLIST.md ]; then
+            cat artifacts/ui/BUTTON_CHECKLIST.md >> "$GITHUB_STEP_SUMMARY"
+          fi

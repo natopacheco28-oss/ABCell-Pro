@@ -152,7 +152,7 @@ def generar_imagen_ticket(orden: dict, config: ConfigManager, ruta_destino: str)
 
     # --- Encabezado con logo ---
     try:
-        logo = logo_color_pil(config)
+        logo = logo_color_pil(config) if config.get("notas", "mostrar_logo", True) else None
     except Exception:
         logo = None
     if logo is not None:

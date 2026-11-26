@@ -2,6 +2,10 @@ import hashlib
 import hmac
 import json
 import os
+import copy
+import io
+import tempfile
+from pathlib import Path
 
 
 DEFAULT_CONFIG = {
@@ -54,7 +58,7 @@ DEFAULT_CONFIG = {
         ),
     },
     "apariencia": {
-        "tema": "Mostrador Limpio",
+        "tema": "Lima Pro",
     },
     "seguridad": {
         "salt": "",
@@ -95,8 +99,80 @@ class ConfigManager:
         carpeta = os.path.dirname(os.path.abspath(self.config_path))
         if carpeta:
             os.makedirs(carpeta, exist_ok=True)
-        with open(self.config_path, "w", encoding="utf-8") as f:
-            json.dump(self.data, f, indent=2, ensure_ascii=False)
+        # No dejar un JSON truncado si falla la escritura o se interrumpe.
+        temporal = None
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=carpeta,
+                                             suffix=".tmp", delete=False) as f:
+                temporal = f.name
+                json.dump(self.data, f, indent=2, ensure_ascii=False)
+            os.replace(temporal, self.config_path)
+        finally:
+            if temporal and os.path.exists(temporal):
+                os.unlink(temporal)
+
+    def ruta_logo_personalizado(self) -> str:
+        """Soporta rutas absolutas antiguas y logos portables junto al JSON."""
+        ruta = str(self.get("identidad", "logo_personalizado", "") or "").strip()
+        if not ruta:
+            return ""
+        path = Path(ruta).expanduser()
+        if not path.is_absolute():
+            path = Path(self.config_path).resolve().parent / path
+        return str(path)
+
+    def guardar_datos_taller(self, nombre: str, telefono: str, direccion: str,
+                            logo: str, garantia: str):
+        """Una sola actualización para identidad, contacto y todas las notas.
+
+        El logo se valida y se convierte a PNG en data/logos; su ruta relativa
+        permite trasladar la carpeta de datos con el ejecutable.
+        """
+        nombre = nombre.strip()
+        if not nombre:
+            raise ValueError("Escribe el nombre del taller.")
+        logo = logo.strip()
+        ruta_guardada = ""
+        if logo:
+            from PIL import Image, ImageOps, UnidentifiedImageError
+            source = Path(logo).expanduser()
+            if not source.is_absolute():
+                source = Path(self.config_path).resolve().parent / source
+            try:
+                with Image.open(source) as original:
+                    image = ImageOps.exif_transpose(original).convert("RGBA")
+                    image.thumbnail((2048, 2048), Image.Resampling.LANCZOS)
+                    buffer = io.BytesIO()
+                    image.save(buffer, format="PNG")
+            except (OSError, ValueError, UnidentifiedImageError) as exc:
+                raise ValueError("No se pudo leer el logo. Elige una imagen válida y accesible.") from exc
+            contenido = buffer.getvalue()
+            filename = "logo-" + hashlib.sha256(contenido).hexdigest() + ".png"
+            carpeta = Path(self.config_path).resolve().parent / "logos"
+            carpeta.mkdir(parents=True, exist_ok=True)
+            destino = carpeta / filename
+            if not destino.exists():
+                destino.write_bytes(contenido)
+            ruta_guardada = "logos/" + filename
+
+        anterior = copy.deepcopy(self.data)
+        try:
+            self.set("identidad", "nombre_establecimiento", nombre)
+            self.set("notas", "nombre_comercial", nombre)
+            # Retirar las líneas heredadas ABCell/TIZIMIN del encabezado.
+            partes = nombre.split(maxsplit=1)
+            self.set("identidad", "linea_1_ticket", partes[0])
+            self.set("identidad", "linea_2_ticket", partes[1] if len(partes) > 1 else "")
+            for clave, valor in (("telefono", telefono), ("direccion", direccion)):
+                self.set("contacto", clave, valor.strip())
+                self.set("notas", clave, valor.strip())
+            self.set("identidad", "logo_personalizado", ruta_guardada)
+            self.set("notas", "mostrar_logo", bool(ruta_guardada))
+            self.set("notas", "politicas_garantia", garantia.strip())
+            self.save()
+        except Exception:
+            self.data = anterior
+            raise
 
     def get(self, seccion: str, clave: str, default=None):
         sec = self.data.get(seccion)

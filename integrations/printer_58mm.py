@@ -86,34 +86,45 @@ def _detectar_formato_en_handle(win32print_mod, hprinter, nombre_impresora: str)
     return clasificar_formato_papel(nombre_impresora, driver_name, form_name, paper_width)
 
 
+def _logo_configurado(config: ConfigManager, modo: str):
+    # Nunca sustituir el logo de otro taller por la marca ABCell si falta el
+    # archivo. Cada llamada relee el logo vigente, sin caché de la imagen.
+    custom = config.ruta_logo_personalizado()
+    if not custom:
+        return None
+    try:
+        with Image.open(custom) as original:
+            from PIL import ImageOps
+            rgba = ImageOps.exif_transpose(original).convert("RGBA")
+            if modo == "RGBA":
+                return rgba
+            blanco = Image.new("RGBA", rgba.size, "white")
+            blanco.alpha_composite(rgba)
+            return blanco.convert(modo)
+    except (OSError, ValueError):
+        return None
+
+
 def logo_pil(config: ConfigManager | None = None):
     if Image is None:
         return None
-    if config:
-        custom = config.get("identidad", "logo_personalizado", "")
-        if custom and os.path.exists(custom):
-            try:
-                return Image.open(custom).convert("L")
-            except Exception:
-                pass
+    if config is not None:
+        return _logo_configurado(config, "L")
     if not LOGO_B64:
         return None
-    return Image.open(io.BytesIO(base64.b64decode(LOGO_B64))).convert("L")
+    with Image.open(io.BytesIO(base64.b64decode(LOGO_B64))) as original:
+        return original.convert("L")
 
 
 def logo_color_pil(config: ConfigManager | None = None):
     if Image is None:
         return None
-    if config:
-        custom = config.get("identidad", "logo_personalizado", "")
-        if custom and os.path.exists(custom):
-            try:
-                return Image.open(custom).convert("RGBA")
-            except Exception:
-                pass
+    if config is not None:
+        return _logo_configurado(config, "RGBA")
     if not LOGO_COLOR_B64:
         return None
-    return Image.open(io.BytesIO(base64.b64decode(LOGO_COLOR_B64))).convert("RGBA")
+    with Image.open(io.BytesIO(base64.b64decode(LOGO_COLOR_B64))) as original:
+        return original.convert("RGBA")
 
 
 def _fuente(tam: int):
@@ -154,18 +165,18 @@ def crear_encabezado_img(
     nombre_comercial = config.get("notas", "nombre_comercial") or config.get(
         "identidad", "nombre_establecimiento", "ABCell Tizimin"
     )
-    partes = nombre_comercial.strip().split(" ", 1)
-    linea_1 = config.get("identidad", "linea_1_ticket") or partes[0]
-    linea_2 = config.get("identidad", "linea_2_ticket") or (
-        partes[1].upper() if len(partes) > 1 else ""
-    )
+    # El encabezado usa el nombre vigente, nunca líneas antiguas del JSON.
+    partes = nombre_comercial.strip().split(maxsplit=1)
+    linea_1 = partes[0] if partes else ""
+    linea_2 = partes[1] if len(partes) > 1 else ""
 
     margen = 4
     img = Image.new("L", (ancho, tam_logo + 2 * margen), 255)
-    lg = logo.resize((tam_logo, tam_logo), Image.LANCZOS).point(
+    from PIL import ImageOps
+    lg = ImageOps.contain(logo, (tam_logo, tam_logo), Image.Resampling.LANCZOS).point(
         lambda p: 0 if p < 200 else 255
     )
-    img.paste(lg, (0, margen))
+    img.paste(lg, ((tam_logo - lg.width) // 2, margen + (tam_logo - lg.height) // 2))
 
     x0 = tam_logo + 12
     disponible = max(60, ancho - x0)
@@ -383,6 +394,8 @@ def imprimir_ticket_prueba(config: ConfigManager) -> tuple[bool, str]:
             )
             lineas = [
                 nombre_negocio.upper().center(ancho),
+                *textwrap.wrap(str(config.get("notas", "direccion", "") or ""), ancho),
+                *textwrap.wrap(str(config.get("notas", "telefono", "") or ""), ancho),
                 "PRUEBA DE IMPRESION".center(ancho),
                 "=" * ancho,
                 f"Formato detectado: {formato}".center(ancho),

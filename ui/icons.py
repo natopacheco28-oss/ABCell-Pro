@@ -20,7 +20,7 @@ from __future__ import annotations
 from typing import Dict
 
 from PySide6.QtCore import QByteArray, QPointF, Qt
-from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
+from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
 
 try:
     from PySide6.QtSvg import QSvgRenderer
@@ -274,7 +274,7 @@ def _svg_para(nombre: str) -> str:
 
 
 def _render_svg(svg: str, color: str, tamano: int) -> QPixmap:
-    renderer = QSvgRenderer(QByteArray(svg.encode("utf-8")))
+    renderer = QSvgRenderer(QByteArray(svg.replace("currentColor", color).encode("utf-8")))
     if not renderer.isValid():
         return QPixmap()
     # Alta resolución para nítidez en pantallas con alta densidad de píxeles.
@@ -286,10 +286,9 @@ def _render_svg(svg: str, color: str, tamano: int) -> QPixmap:
     painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
     renderer.render(painter)
     painter.end()
-    # Escalar al tamaño pedido, conservando la transparencia.
-    return pix.scaled(
-        tamano, tamano, Qt.KeepAspectRatio, Qt.SmoothTransformation
-    )
+    # Conservar resolución real para pantallas HiDPI (tamaño lógico sin cambios).
+    pix.setDevicePixelRatio(4.0)
+    return pix
 
 
 def _fallback_dibujado(nombre: str, color: str, tamano: int) -> QPixmap:

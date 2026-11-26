@@ -2,8 +2,14 @@ name: Compilar ABCell Pro .exe
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
+
+permissions:
+  contents: read
+  checks: write
 
 jobs:
   build:
@@ -20,16 +26,44 @@ jobs:
       - name: Instalar dependencias
         run: pip install -r requirements.txt
 
-      - name: Preparar logo.ico
-        shell: pwsh
+      - name: Verificar código y regresiones
+        shell: bash
+        env:
+          QT_QPA_PLATFORM: windows
         run: |
-          if (-not (Test-Path "logo.ico")) {
-            python -c "from PIL import Image, ImageDraw; img = Image.new('RGBA', (256, 256), (15, 23, 42, 255)); d = ImageDraw.Draw(img); d.rounded_rectangle((24, 24, 232, 232), radius=36, fill=(37, 99, 235, 255)); img.save('logo.ico', sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])"
-          }
-          if (-not (Test-Path "logo.ico")) {
-            throw "No se pudo preparar logo.ico"
-          }
-          Get-Item "logo.ico"
+          mkdir -p artifacts/ui
+          python -m compileall -q config core database integrations services ui tools tests main.py
+          set -o pipefail
+          python -u -m unittest discover -s tests -v 2>&1 | tee artifacts/ui/tests.log
+
+      - name: Auditar todas las vistas y botones en Windows
+        shell: bash
+        env:
+          QT_QPA_PLATFORM: windows
+        run: |
+          mkdir -p artifacts/ui
+          set -o pipefail
+          python -u tools/audit_ui.py --output artifacts/ui 2>&1 | tee artifacts/ui/audit.log
+
+      - name: Publicar diagnóstico Windows
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          SCALE: Windows
+        run: python tools/publish_ui_check.py
+
+      - name: Subir revisión de interfaz Windows
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verificacion-ui-windows
+          path: artifacts/ui/
+          if-no-files-found: warn
+
+      - name: Preparar icono ABCell Pro
+        run: python tools/prepare_icon.py
 
       - name: Preparar platform-tools (ADB)
         shell: pwsh
@@ -66,8 +100,9 @@ jobs:
       - name: Compilar ejecutable con PyInstaller
         shell: pwsh
         run: |
-          pyinstaller --onefile --noconsole --icon logo.ico `
-            --name ABCell_Gestion_Taller `
+          pyinstaller --onefile --noconsole --icon "ui/assets/abcell-pro.ico" `
+            --version-file "config/windows_version_info.txt" `
+            --name "ABCell Pro" `
             --hidden-import config.settings `
             --hidden-import config.assets `
             --hidden-import core.catalog_data `
@@ -77,6 +112,7 @@ jobs:
             --hidden-import integrations.printer_58mm `
             --hidden-import integrations.ticket_image `
             --hidden-import integrations.whatsapp_center `
+            --hidden-import ui.layouts `
             --hidden-import ui.theme `
             --hidden-import ui.icons `
             --hidden-import ui.main_window `
@@ -93,6 +129,6 @@ jobs:
       - name: Subir artefacto .exe
         uses: actions/upload-artifact@v4
         with:
-          name: ABCell_Gestion_Taller_exe
-          path: dist/ABCell_Gestion_Taller.exe
+          name: ABCell-Pro-Windows
+          path: "dist/ABCell Pro.exe"
           if-no-files-found: error
