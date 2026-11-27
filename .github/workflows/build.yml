@@ -123,6 +123,7 @@ jobs:
             --add-data "services;services" `
             --add-data "integrations;integrations" `
             --add-data "ui;ui" `
+            --add-data "ui/assets/abcell-pro.ico;ui/assets" `
             --add-data "platform_tools;platform_tools" `
             main.py
 

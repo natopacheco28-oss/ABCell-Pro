@@ -78,7 +78,7 @@ foreach ($module in @("config.settings", "config.assets", "core.catalog_data", "
 foreach ($folder in @("config", "core", "database", "services", "integrations", "ui")) {
     $arguments += @("--add-data", "$folder;$folder")
 }
-$arguments += @("--add-data", "$platformTools;platform_tools", "main.py")
+$arguments += @("--add-data", "$icon;ui/assets", "--add-data", "$platformTools;platform_tools", "main.py")
 Invoke-Checked -Program $python -Arguments $arguments
 Write-Host "Compilación terminada: dist\ABCell Pro.exe"
 Write-Host "Verificación de botones: artifacts\ui\BUTTON_CHECKLIST.md"

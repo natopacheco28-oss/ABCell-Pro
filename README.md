@@ -110,7 +110,9 @@ ABCell Pro.exe
 
 Se publica como artefacto **ABCell-Pro-Windows**, acompañado de **verificacion-ui-windows**. El `.exe` Windows debe compilarse en Windows: no es una compilación cruzada desde Linux.
 
-El icono del programa y del ejecutable procede del logo suministrado, convertido a ICO multirresolución por `tools/prepare_icon.py`. La marca de la aplicación es independiente del logo personalizado del taller usado en tickets. Los nombres de las carpetas de datos antiguas se conservan por compatibilidad.
+El icono del programa y del ejecutable procede del logo suministrado, convertido a ICO multirresolución por `tools/prepare_icon.py`. La aplicación asigna este icono a la ventana principal; los diálogos de Qt lo heredan de la ventana o de la aplicación. En Windows se usa el identificador `ABCell.Pro.1` para la barra de tareas. La marca de la aplicación es independiente del logo personalizado del taller usado en tickets. Los nombres de las carpetas de datos antiguas se conservan por compatibilidad.
+
+Si Windows sigue mostrando el icono anterior después de actualizar, cierra ABCell Pro y desancla el acceso directo anterior de la barra de tareas. En el Administrador de tareas, selecciona **Explorador de Windows** y pulsa **Reiniciar** (o reinicia el equipo). Abre el nuevo `.exe` extraído del artefacto y vuelve a anclarlo. Si persiste, Windows puede conservar su caché de iconos: reinicia la sesión o el equipo antes de volver a probar. Conserva la carpeta `data` junto al nuevo `.exe`.
 
 ## Autoría y avisos de Windows
 

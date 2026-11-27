@@ -60,11 +60,19 @@ def obtener_carpeta_datos() -> str:
     return base
 
 
-def main():
+def _establecer_identidad_windows():
+    # Debe ejecutarse antes de crear QApplication o cualquier ventana.
     if sys.platform == "win32":
-        # Agrupar barra de tareas bajo la marca nueva, no bajo python.exe.
-        import ctypes
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
+        try:
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
+        except Exception:
+            # La aplicación sigue funcionando si Windows no permite asignarlo.
+            pass
+
+
+def main():
+    _establecer_identidad_windows()
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setApplicationDisplayName(APP_NAME)
