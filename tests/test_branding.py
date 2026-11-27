@@ -40,10 +40,10 @@ class BrandingTests(unittest.TestCase):
                  patch.object(sys, "executable", str(executable_dir / "ABCell Pro.exe")):
                 self.assertEqual(resource_path(relative), extracted_icon)
                 extracted_icon.unlink()
-                self.assertEqual(resource_path(relative), portable_icon)
+                self.assertEqual(resource_path(relative), portable_icon.resolve())
             with patch.object(sys, "frozen", True, create=True), \
                  patch.object(sys, "executable", str(executable_dir / "ABCell Pro.exe")):
-                self.assertEqual(resource_path(relative), portable_icon)
+                self.assertEqual(resource_path(relative), portable_icon.resolve())
 
     def test_windows_identity_is_set_and_failures_are_nonfatal(self):
         import ctypes
